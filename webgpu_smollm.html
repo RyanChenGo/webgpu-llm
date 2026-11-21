@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmolLM2 WebGPU - 浏览器本地运行 · 隐私 · 极简</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    .prose pre {
+      background-color: #0f172a !important;
+      border: 1px solid #1e293b;
+      border-radius: 0.5rem;
+      padding: 0.875rem;
+      margin: 0.75rem 0;
+      overflow-x: auto;
+      position: relative;
+    }
+    .prose code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.875em; }
+    .prose p { margin-bottom: 0.65rem; line-height: 1.65; }
+    .prose p:last-child { margin-bottom: 0; }
+    .prose ul, .prose ol { margin-left: 1.25rem; margin-bottom: 0.65rem; list-style-type: disc; }
+    .prose ol { list-style-type: decimal; }
+    .copy-btn {
+      position: absolute; top: 0.4rem; right: 0.4rem;
+      background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+      border-radius: 0.375rem; padding: 0.2rem 0.5rem; font-size: 0.75rem;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .copy-btn:hover { background: #334155; color: #f8fafc; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-emerald-500/30">
+
+  <!-- 顶部状态栏 -->
+  <header class="border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-md sticky top-0 z-20">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center font-bold text-white shadow-lg shadow-emerald-500/20">
+          S2
+        </div>
+        <div>
+          <h1 class="text-base font-semibold tracking-tight text-slate-100 flex items-center gap-2">
+            SmolLM2 WebGPU
+            <span class="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">移动端友好</span>
+          </h1>
+          <p class="text-xs text-slate-400">100% 浏览器本地推理 · 零后端 · 隐私安全</p>
+        </div>
+      </div>
+
+      <!-- 硬件与性能指标 -->
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <div id="gpu-badge" class="px-2.5 py-1 rounded-md bg-slate-800/90 border border-slate-700/80 text-slate-300 flex items-center gap-1.5">
+          <span id="gpu-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          <span id="gpu-text">检测 WebGPU 中...</span>
+        </div>
+        <div class="px-2.5 py-1 rounded-md bg-slate-800/90 border border-slate-700/80 text-slate-300">
+          TTFT: <span id="stat-ttft" class="font-mono text-emerald-400">--</span>
+        </div>
+        <div class="px-2.5 py-1 rounded-md bg-slate-800/90 border border-slate-700/80 text-slate-300">
+          速度: <span id="stat-tps" class="font-mono text-emerald-400">--</span> tok/s
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 控制面板 -->
+  <section class="border-b border-slate-800/60 bg-slate-900/40">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1">
+        <label for="model-select" class="text-xs font-medium text-slate-400 whitespace-nowrap">选择模型规格：</label>
+        <select id="model-select" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500 transition">
+          <option value="SmolLM2-360M-Instruct" selected>SmolLM2-360M-Instruct（推荐 · 约 250MB · 手机秒开）</option>
+          <option value="SmolLM2-1.7B-Instruct">SmolLM2-1.7B-Instruct（进阶 · 约 1.1GB · 能力更强）</option>
+          <option value="SmolLM2-135M-Instruct">SmolLM2-135M-Instruct（极速 · 约 100MB · 超省内存）</option>
+        </select>
+
+        <button id="load-btn" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition shadow-sm shadow-emerald-600/20 whitespace-nowrap">
+          加载 / 初始化模型
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2 justify-end">
+        <button id="clear-chat-btn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition border border-slate-700/70">
+          清空对话
+        </button>
+        <button id="clear-cache-btn" title="释放浏览器 Cache API 中保存的模型权重" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-800/60 text-slate-400 text-xs transition border border-slate-700/70">
+          释放本地缓存
+        </button>
+      </div>
+    </div>
+
+    <!-- 进度条与状态提示 -->
+    <div id="progress-container" class="hidden max-w-5xl mx-auto px-4 pb-3">
+      <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3">
+        <div class="flex items-center justify-between text-xs mb-1.5">
+          <span id="progress-text" class="text-slate-300 truncate pr-2">准备加载模型权重...</span>
+          <span id="progress-pct" class="font-mono text-emerald-400 font-semibold">0%</span>
+        </div>
+        <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+          <div id="progress-bar" class="bg-emerald-500 h-1.5 rounded-full transition-all duration-200" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 聊天消息区 -->
+  <main id="chat-container" class="flex-1 max-w-5xl w-full mx-auto px-4 py-6 overflow-y-auto space-y-5">
+    <div id="welcome-card" class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 text-center max-w-xl mx-auto my-8">
+      <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-3 text-xl font-bold">
+        ⚡
+      </div>
+      <h2 class="text-lg font-semibold text-slate-100 mb-1.5">SmolLM2 本地端侧大模型</h2>
+      <p class="text-xs text-slate-400 leading-relaxed mb-4">
+        Hugging Face 推出的超轻量端侧模型系列，体积小、响应快，专为手机与轻薄本优化。首次加载需联网从 Hugging Face 下载权重至浏览器缓存，之后即可断网离线使用。
+      </p>
+      <div class="text-[11px] text-slate-500 bg-slate-950/70 rounded-lg p-2.5 border border-slate-800/80">
+        💡 提示：iPhone 用户请先前往「设置 → Safari 浏览器 → 高级 → Feature Flags」开启 <strong>WebGPU</strong>。
+      </div>
+    </div>
+  </main>
+
+  <!-- 底部输入框 -->
+  <footer class="border-t border-slate-800/80 bg-slate-900/80 backdrop-blur-md sticky bottom-0">
+    <div class="max-w-5xl mx-auto px-4 py-3">
+      <form id="chat-form" class="flex items-end gap-2.5">
+        <textarea
+          id="user-input"
+          rows="1"
+          disabled
+          placeholder="请先点击上方「加载 / 初始化模型」..."
+          class="flex-1 bg-slate-950 border border-slate-700/90 focus:border-emerald-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none resize-none max-h-36 disabled:opacity-50"
+        ></textarea>
+        <button
+          type="submit"
+          id="send-btn"
+          disabled
+          class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition whitespace-nowrap"
+        >
+          发送
+        </button>
+        <button
+          type="button"
+          id="stop-btn"
+          class="hidden px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-medium transition whitespace-nowrap"
+        >
+          停止
+        </button>
+      </form>
+      <div class="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+        <span>Powered by WebLLM & WebGPU · MIT License</span>
+        <span>注意：SmolLM2 为英文主导超小模型，英文提问效果更佳</span>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module">
+    import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+
+    const gpuDot = document.getElementById("gpu-dot");
+    const gpuText = document.getElementById("gpu-text");
+    const modelSelect = document.getElementById("model-select");
+    const loadBtn = document.getElementById("load-btn");
+    const progressContainer = document.getElementById("progress-container");
+    const progressText = document.getElementById("progress-text");
+    const progressPct = document.getElementById("progress-pct");
+    const progressBar = document.getElementById("progress-bar");
+    const chatContainer = document.getElementById("chat-container");
+    const welcomeCard = document.getElementById("welcome-card");
+    const chatForm = document.getElementById("chat-form");
+    const userInput = document.getElementById("user-input");
+    const sendBtn = document.getElementById("send-btn");
+    const stopBtn = document.getElementById("stop-btn");
+    const clearChatBtn = document.getElementById("clear-chat-btn");
+    const clearCacheBtn = document.getElementById("clear-cache-btn");
+    const statTtft = document.getElementById("stat-ttft");
+    const statTps = document.getElementById("stat-tps");
+
+    let engine = null;
+    let isGenerating = false;
+    let hasF16 = false;
+    let messages = [
+      { role: "system", content: "You are SmolLM2, a helpful, concise, and friendly AI assistant running locally in the user's browser via WebGPU. Reply in the same language the user uses." }
+    ];
+
+    marked.setOptions({
+      highlight: function (code, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+          return hljs.highlight(code, { language: lang }).value;
+        }
+        return hljs.highlightAuto(code).value;
+      },
+      breaks: true
+    });
+
+    // 1. 硬件检测
+    async function checkWebGPU() {
+      if (!navigator.gpu) {
+        gpuDot.className = "w-2 h-2 rounded-full bg-rose-500";
+        gpuText.textContent = "不支持 WebGPU";
+        loadBtn.disabled = true;
+        appendSystemAlert("当前浏览器未检测到 WebGPU 支持。请使用新版 Chrome / Edge，或在 iPhone Safari 的「设置 → 高级 → Feature Flags」中开启 WebGPU 后刷新。");
+        return;
+      }
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) {
+          gpuDot.className = "w-2 h-2 rounded-full bg-rose-500";
+          gpuText.textContent = "未找到可用 GPU";
+          loadBtn.disabled = true;
+          return;
+        }
+        hasF16 = adapter.features.has("shader-f16");
+        const info = adapter.info || {};
+        const gpuName = info.description || info.architecture || (hasF16 ? "WebGPU (FP16 就绪)" : "WebGPU (FP32 模式)");
+        gpuDot.className = "w-2 h-2 rounded-full bg-emerald-400";
+        gpuText.textContent = gpuName.length > 24 ? gpuName.slice(0, 24) + "..." : gpuName;
+      } catch (err) {
+        gpuDot.className = "w-2 h-2 rounded-full bg-amber-400";
+        gpuText.textContent = "WebGPU 检测异常";
+      }
+    }
+
+    // 2. 自动匹配 WebLLM 预编译列表中的可用 SmolLM2 Model ID
+    function resolveModelId(baseName) {
+      const available = webllm.prebuiltAppConfig?.model_list || [];
+      const matches = available
+        .map(m => m.model_id)
+        .filter(id => id.toLowerCase().includes(baseName.toLowerCase()));
+
+      if (matches.length > 0) {
+        const preferredSuffix = hasF16 ? "f16" : "f32";
+        const exactMatch = matches.find(id => id.toLowerCase().includes(preferredSuffix));
+        return exactMatch || matches[0];
+      }
+      // 兜底默认 ID
+      if (baseName.includes("135M")) {
+        return hasF16 ? "SmolLM2-135M-Instruct-q0f16-MLC" : "SmolLM2-135M-Instruct-q0f32-MLC";
+      }
+      return `${baseName}-${hasF16 ? "q4f16_1" : "q4f32_1"}-MLC`;
+    }
+
+    // 3. 加载模型
+    loadBtn.addEventListener("click", async () => {
+      const baseModel = modelSelect.value;
+      const targetModelId = resolveModelId(baseModel);
+
+      loadBtn.disabled = true;
+      modelSelect.disabled = true;
+      progressContainer.classList.remove("hidden");
+      progressBar.style.width = "0%";
+      progressPct.textContent = "0%";
+      progressText.textContent = `正在初始化 ${targetModelId}...`;
+
+      try {
+        if (engine) {
+          await engine.unload();
+        }
+        engine = await webllm.CreateMLCEngine(targetModelId, {
+          initProgressCallback: (report) => {
+            const pct = Math.round((report.progress || 0) * 100);
+            progressBar.style.width = `${pct}%`;
+            progressPct.textContent = `${pct}%`;
+            progressText.textContent = report.text || "加载中...";
+          }
+        });
+
+        progressText.textContent = `✅ ${targetModelId} 已就绪！`;
+        userInput.disabled = false;
+        sendBtn.disabled = false;
+        userInput.placeholder = "输入消息，按 Enter 发送（Shift + Enter 换行）...";
+        userInput.focus();
+      } catch (err) {
+        console.error(err);
+        progressText.textContent = `❌ 加载失败: ${err.message}`;
+        appendSystemAlert(`模型加载失败（${err.message}）。如果是手机端内存不足（OOM），请尝试关闭其他后台 App 并切换至更小的 135M 模型。`);
+      } finally {
+        loadBtn.disabled = false;
+        modelSelect.disabled = false;
+      }
+    });
+
+    // 4. 渲染消息气泡
+    function appendMessage(role, content = "") {
+      if (welcomeCard) welcomeCard.remove();
+
+      const wrapper = document.createElement("div");
+      wrapper.className = `flex ${role === "user" ? "justify-end" : "justify-start"}`;
+
+      const bubble = document.createElement("div");
+      bubble.className = role === "user"
+        ? "max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-sm px-4 py-3 bg-emerald-600 text-white text-sm leading-relaxed shadow-sm"
+        : "max-w-[92%] sm:max-w-[82%] rounded-2xl rounded-bl-sm px-4 py-3 bg-slate-900 border border-slate-800 text-slate-100 text-sm prose prose-invert shadow-sm";
+
+      if (role === "user") {
+        bubble.textContent = content;
+      } else {
+        bubble.innerHTML = content ? marked.parse(content) : '<span class="inline-block w-2 h-4 bg-emerald-400 animate-pulse"></span>';
+      }
+
+      wrapper.appendChild(bubble);
+      chatContainer.appendChild(wrapper);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+      return bubble;
+    }
+
+    function appendSystemAlert(text) {
+      const div = document.createElement("div");
+      div.className = "bg-rose-950/50 border border-rose-800/70 text-rose-200 text-xs rounded-xl px-4 py-3";
+      div.textContent = text;
+      chatContainer.appendChild(div);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function enhanceCodeBlocks(container) {
+      container.querySelectorAll("pre").forEach((pre) => {
+        if (pre.querySelector(".copy-btn")) return;
+        const btn = document.createElement("button");
+        btn.className = "copy-btn";
+        btn.textContent = "复制";
+        btn.onclick = () => {
+          const code = pre.querySelector("code")?.innerText || pre.innerText;
+          navigator.clipboard.writeText(code);
+          btn.textContent = "已复制";
+          setTimeout(() => (btn.textContent = "复制"), 1500);
+        };
+        pre.appendChild(btn);
+      });
+    }
+
+    // 5. 发送与流式生成
+    async function handleSend() {
+      const text = userInput.value.trim();
+      if (!text || !engine || isGenerating) return;
+
+      userInput.value = "";
+      userInput.style.height = "auto";
+      appendMessage("user", text);
+      messages.push({ role: "user", content: text });
+
+      isGenerating = true;
+      sendBtn.classList.add("hidden");
+      stopBtn.classList.remove("hidden");
+      userInput.disabled = true;
+
+      const aiBubble = appendMessage("assistant", "");
+      let fullReply = "";
+      const startTime = performance.now();
+      let firstTokenTime = null;
+      let tokenCount = 0;
+
+      try {
+        const chunks = await engine.chat.completions.create({
+          messages,
+          stream: true,
+          temperature: 0.7,
+          max_tokens: 1024
+        });
+
+        for await (const chunk of chunks) {
+          const delta = chunk.choices[0]?.delta?.content || "";
+          if (delta) {
+            if (!firstTokenTime) {
+              firstTokenTime = performance.now();
+              statTtft.textContent = `${Math.round(firstTokenTime - startTime)}ms`;
+            }
+            tokenCount++;
+            fullReply += delta;
+            aiBubble.innerHTML = marked.parse(fullReply);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            const elapsedSec = (performance.now() - firstTokenTime) / 1000;
+            if (elapsedSec > 0.1) {
+              statTps.textContent = (tokenCount / elapsedSec).toFixed(1);
+            }
+          }
+        }
+        enhanceCodeBlocks(aiBubble);
+        messages.push({ role: "assistant", content: fullReply });
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          aiBubble.innerHTML = `<span class="text-rose-400">生成中断或出错：${err.message}</span>`;
+        }
+      } finally {
+        isGenerating = false;
+        stopBtn.classList.add("hidden");
+        sendBtn.classList.remove("hidden");
+        userInput.disabled = false;
+        userInput.focus();
+      }
+    }
+
+    chatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      handleSend();
+    });
+
+    userInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    });
+
+    userInput.addEventListener("input", () => {
+      userInput.style.height = "auto";
+      userInput.style.height = Math.min(userInput.scrollHeight, 144) + "px";
+    });
+
+    stopBtn.addEventListener("click", () => {
+      if (engine && isGenerating) {
+        engine.interruptGenerate();
+      }
+    });
+
+    clearChatBtn.addEventListener("click", () => {
+      messages = [messages[0]];
+      chatContainer.innerHTML = "";
+      statTtft.textContent = "--";
+      statTps.textContent = "--";
+    });
+
+    clearCacheBtn.addEventListener("click", async () => {
+      if (!confirm("确定要清除浏览器中缓存的所有 WebLLM 模型文件吗？下次使用需重新下载。")) return;
+      try {
+        const keys = await caches.keys();
+        for (const key of keys) {
+          if (key.includes("webllm") || key.includes("mlc")) {
+            await caches.delete(key);
+          }
+        }
+        alert("本地模型缓存已清理完成！");
+      } catch (e) {
+        alert("清理缓存失败：" + e.message);
+      }
+    });
+
+    checkWebGPU();
+  </script>
+</body>
+</html>
