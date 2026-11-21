@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebGPU LLM - 简单。隐私。在浏览器里。</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <!-- Marked.js 用于 Markdown 渲染 -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Highlight.js 用于代码块高亮 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            slate: {
+              850: '#151e2e',
+              900: '#0f172a',
+              950: '#090d16',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* 自定义滚动条与基础排版 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.25);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.45);
+    }
+
+    /* Markdown 内容样式 */
+    .markdown-body p {
+      margin-bottom: 0.75rem;
+      line-height: 1.65;
+    }
+    .markdown-body p:last-child {
+      margin-bottom: 0;
+    }
+    .markdown-body ul, .markdown-body ol {
+      margin-left: 1.25rem;
+      margin-bottom: 0.75rem;
+      list-style-type: disc;
+    }
+    .markdown-body ol {
+      list-style-type: decimal;
+    }
+    .markdown-body li {
+      margin-bottom: 0.25rem;
+    }
+    .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+      font-weight: 600;
+      margin-top: 1rem;
+      margin-bottom: 0.5rem;
+      color: #f8fafc;
+    }
+    .markdown-body h1 { font-size: 1.25rem; }
+    .markdown-body h2 { font-size: 1.125rem; }
+    .markdown-body h3 { font-size: 1rem; }
+    .markdown-body code:not(pre code) {
+      background: rgba(99, 102, 241, 0.18);
+      color: #a5b4fc;
+      padding: 0.15rem 0.35rem;
+      border-radius: 0.375rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85em;
+    }
+    .markdown-body pre {
+      position: relative;
+      background: #0b101b !important;
+      border: 1px solid rgba(51, 65, 85, 0.7);
+      border-radius: 0.625rem;
+      padding: 2.25rem 1rem 0.875rem 1rem;
+      margin: 0.75rem 0;
+      overflow-x: auto;
+    }
+    .markdown-body pre code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      background: transparent !important;
+      padding: 0 !important;
+    }
+    .markdown-body blockquote {
+      border-left: 3px solid #6366f1;
+      padding-left: 0.875rem;
+      color: #94a3b8;
+      margin: 0.75rem 0;
+    }
+    .markdown-body table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.75rem 0;
+      font-size: 0.875rem;
+    }
+    .markdown-body th, .markdown-body td {
+      border: 1px solid #334155;
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+    }
+    .markdown-body th {
+      background: rgba(30, 41, 59, 0.8);
+    }
+
+    /* 光标闪烁动画 */
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .typing-cursor::after {
+      content: '▋';
+      display: inline-block;
+      margin-left: 2px;
+      color: #818cf8;
+      animation: blink 1s infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased h-screen flex flex-col overflow-hidden selection:bg-indigo-500/30 selection:text-indigo-200">
+
+  <!-- 全局消息通知条 (替代 alert) -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-md pointer-events-none"></div>
+
+  <!-- 移动端顶部栏 -->
+  <header class="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-900/90 border-b border-slate-800 backdrop-blur-md z-30">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+        <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      </div>
+      <div>
+        <h1 class="font-bold text-sm tracking-tight text-white">Qwen 7B WebGPU</h1>
+        <p id="mobile-status-badge" class="text-[11px] text-slate-400">未加载模型</p>
+      </div>
+    </div>
+    <button id="mobile-menu-btn" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+      </svg>
+    </button>
+  </header>
+
+  <!-- 主布局容器 -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- 侧边栏遮罩 (移动端) -->
+    <div id="sidebar-backdrop" class="fixed inset-0 bg-black/60 backdrop-blur-xs z-30 hidden lg:hidden"></div>
+
+    <!-- 左侧控制面板 Sidebar -->
+    <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-40 w-80 sm:w-85 bg-slate-900/95 border-r border-slate-800/80 flex flex-col transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-out">
+      <!-- Brand Header -->
+      <div class="p-5 border-b border-slate-800/80 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+            <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <h1 class="font-bold text-base text-white tracking-tight">Qwen Local</h1>
+              <span class="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-md">WebGPU</span>
+            </div>
+            <p class="text-xs text-slate-400">纯前端本地推理 · 零数据上传</p>
+          </div>
+        </div>
+        <button id="close-sidebar-btn" class="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- 侧边栏可滚动配置区 -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-5">
+
+        <!-- 1. WebGPU 硬件检测状态卡片 -->
+        <div class="rounded-xl bg-slate-950/80 border border-slate-800 p-3.5 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+              </svg>
+              WebGPU 硬件诊断
+            </span>
+            <span id="gpu-status-pill" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-300">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+              检测中...
+            </span>
+          </div>
+          <div id="gpu-details" class="text-xs text-slate-400 space-y-1 leading-relaxed">
+            正在读取浏览器 GPU 适配器信息...
+          </div>
+        </div>
+
+        <!-- 2. 模型选择与初始化 -->
+        <div class="space-y-3">
+          <label for="model-select" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+            选择量化模型 (MLC)
+          </label>
+          <div class="relative">
+            <select id="model-select" class="w-full appearance-none rounded-xl bg-slate-950 border border-slate-700/80 px-3.5 py-2.5 pr-9 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+              <option value="Qwen2.5-7B-Instruct-q4f16_1-MLC" selected>
+                Qwen2.5-7B-Instruct (q4f16_1 · ~4.5GB) [默认旗舰]
+              </option>
+              <option value="Qwen2.5-7B-Instruct-q4f32_1-MLC">
+                Qwen2.5-7B-Instruct (q4f32_1 · ~5.2GB) [高兼容]
+              </option>
+              <option value="Qwen2.5-3B-Instruct-q4f16_1-MLC">
+                Qwen2.5-3B-Instruct (q4f16_1 · ~2.1GB) [轻量均衡]
+              </option>
+              <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC">
+                Qwen2.5-1.5B-Instruct (q4f16_1 · ~1.1GB) [极速测试]
+              </option>
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+
+          <!-- 显存与缓存说明 -->
+          <div class="rounded-xl bg-indigo-950/30 border border-indigo-500/20 p-3 text-[11px] text-indigo-200/85 leading-relaxed space-y-1">
+            <p class="font-medium text-indigo-300 flex items-center gap-1">
+              <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              显存与本地缓存提示：
+            </p>
+            <p>• <strong>Qwen 7B</strong> 首次加载需下载约 <strong>4.5GB~5.2GB</strong> 权重，建议具备至少 <strong>6GB~8GB</strong> 独立显存或统一内存（如 Apple M1/M2/M3/M4）。</p>
+            <p>• 权重下载后会自动存入浏览器 <strong>Cache Storage</strong>，下次打开秒级加载，无需重复消耗流量。</p>
+          </div>
+
+          <!-- 加载 / 初始化按钮 -->
+          <button id="load-model-btn" class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-sm shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition active:scale-[0.99]">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <span id="load-btn-text">加载 / 初始化模型</span>
+          </button>
+
+          <!-- 进度条区域 -->
+          <div id="progress-wrapper" class="hidden rounded-xl bg-slate-950 border border-slate-800 p-3 space-y-2">
+            <div class="flex items-center justify-between text-xs">
+              <span id="progress-stage" class="text-cyan-400 font-medium truncate max-w-[75%]">准备初始化...</span>
+              <span id="progress-percent" class="font-mono text-slate-300 font-semibold">0%</span>
+            </div>
+            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div id="progress-bar" class="h-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-500 rounded-full transition-all duration-200" style="width: 0%"></div>
+            </div>
+            <p id="progress-detail" class="text-[11px] text-slate-400 font-mono break-all line-clamp-2">
+              等待 WebLLM 引擎响应...
+            </p>
+          </div>
+        </div>
+
+        <hr class="border-slate-800/80" />
+
+        <!-- 3. 推理参数配置 -->
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">推理参数设置</span>
+            <button id="reset-params-btn" class="text-[11px] text-indigo-400 hover:text-indigo-300 transition">恢复默认</button>
+          </div>
+
+          <!-- Temperature -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <label for="temp-slider" class="text-slate-300">随机性 (Temperature)</label>
+              <span id="temp-value" class="font-mono text-indigo-400 font-medium">0.70</span>
+            </div>
+            <input id="temp-slider" type="range" min="0" max="1.5" step="0.05" value="0.7" class="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg" />
+            <div class="flex justify-between text-[10px] text-slate-500">
+              <span>严谨准确 (0.0)</span>
+              <span>创意发散 (1.5)</span>
+            </div>
+          </div>
+
+          <!-- Max Tokens -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <label for="max-tokens-slider" class="text-slate-300">最大输出长度 (Max Tokens)</label>
+              <span id="max-tokens-value" class="font-mono text-indigo-400 font-medium">2048</span>
+            </div>
+            <input id="max-tokens-slider" type="range" min="256" max="4096" step="256" value="2048" class="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg" />
+          </div>
+
+          <!-- System Prompt -->
+          <div class="space-y-1.5">
+            <label for="system-prompt" class="block text-xs text-slate-300">系统提示词 (System Prompt)</label>
+            <textarea id="system-prompt" rows="3" class="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition resize-none" placeholder="设定 AI 的角色与行为准则...">你是 Qwen（通义千问），一个运行在用户浏览器本地 WebGPU 上的智能助手。请用清晰、准确、友好的中文回答问题。</textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 侧边栏底部工具栏 -->
+      <div class="p-4 border-t border-slate-800/80 bg-slate-950/50 space-y-2">
+        <div class="grid grid-cols-2 gap-2">
+          <button id="clear-chat-btn" class="py-2 px-3 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-700/60 transition">
+            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            清空对话
+          </button>
+          <button id="clear-cache-btn" class="py-2 px-3 rounded-xl bg-slate-800/90 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-800/60 text-slate-300 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-700/60 transition" title="清理浏览器本地缓存的模型权重文件">
+            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+            释放缓存
+          </button>
+        </div>
+        <p class="text-[10px] text-center text-slate-500">
+          Powered by <span class="text-slate-400">@mlc-ai/web-llm</span> · 全程离线可运行
+        </p>
+      </div>
+    </aside>
+
+    <!-- 右侧主聊天区域 -->
+    <main class="flex-1 flex flex-col bg-slate-950 relative min-w-0">
+
+      <!-- 顶部状态与性能统计栏 (Desktop) -->
+      <div class="hidden lg:flex items-center justify-between px-6 py-3.5 border-b border-slate-800/70 bg-slate-900/40 backdrop-blur-md">
+        <div class="flex items-center gap-3">
+          <div id="engine-indicator" class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs">
+            <span id="engine-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+            <span id="engine-status-text" class="text-slate-300 font-medium">引擎待命 · 请先在左侧加载模型</span>
+          </div>
+        </div>
+
+        <!-- 实时推理速度指标 -->
+        <div id="perf-metrics" class="flex items-center gap-4 text-xs font-mono text-slate-400">
+          <div class="flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800/80" title="首字延迟 (Time To First Token)">
+            <span class="text-slate-500">TTFT:</span>
+            <span id="metric-ttft" class="text-cyan-400 font-semibold">--</span>
+          </div>
+          <div class="flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800/80" title="每秒生成 Token 数量">
+            <span class="text-slate-500">速度:</span>
+            <span id="metric-tps" class="text-emerald-400 font-semibold">-- tok/s</span>
+          </div>
+          <div class="flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800/80" title="本轮输出 Token 总数">
+            <span class="text-slate-500">Tokens:</span>
+            <span id="metric-tokens" class="text-indigo-400 font-semibold">0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 浏览器不支持 WebGPU 的警告横幅 (默认隐藏) -->
+      <div id="webgpu-unsupported-banner" class="hidden mx-4 sm:mx-6 mt-4 p-4 rounded-2xl bg-rose-950/60 border border-rose-500/40 text-rose-100 shadow-lg">
+        <div class="flex items-start gap-3">
+          <svg class="w-6 h-6 text-rose-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div class="space-y-1.5 text-xs sm:text-sm">
+            <h3 class="font-bold text-rose-200">当前浏览器环境不支持 WebGPU</h3>
+            <p id="webgpu-error-reason" class="text-rose-200/90">未检测到可用的 <code>navigator.gpu</code> 接口。</p>
+            <div class="pt-1 text-xs text-rose-200/80 space-y-1">
+              <p class="font-semibold text-rose-200">推荐解决方案：</p>
+              <ul class="list-disc ml-4 space-y-0.5">
+                <li>请使用最新版本的 <strong>Chrome (113+)</strong>、<strong>Microsoft Edge (113+)</strong> 或 <strong>Safari 18+</strong> 桌面浏览器。</li>
+                <li>确保已在浏览器设置中开启<strong>“硬件加速 / 图形加速”</strong>。</li>
+                <li>Linux 用户可在地址栏打开 <code>chrome://flags/#enable-unsafe-webgpu</code> 并启用后重启浏览器。</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 消息列表滚动区 -->
+      <div id="chat-messages" class="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 scroll-smooth">
+        <!-- 欢迎引导卡片 -->
+        <div id="welcome-screen" class="max-w-2xl mx-auto my-6 sm:my-12 text-center space-y-6">
+          <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500/20 via-purple-500/20 to-cyan-500/20 border border-indigo-500/30 shadow-xl shadow-indigo-500/10">
+            <svg class="w-8 h-8 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+            </svg>
+          </div>
+
+          <div class="space-y-2">
+            <h2 class="text-xl sm:text-2xl font-bold text-white tracking-tight">在浏览器中原生运行 Qwen 7B</h2>
+            <p class="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto leading-relaxed">
+              依托 WebGPU 硬件加速与 MLC 编译技术，无需后端服务器、无需 API Key，所有推理与对话均在您的本地显卡上完成。
+            </p>
+          </div>
+
+          <!-- 快速步骤指引 -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left max-w-xl mx-auto">
+            <div class="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-1">
+              <span class="text-xs font-mono text-indigo-400 font-semibold">01. 选择模型</span>
+              <p class="text-xs text-slate-300 font-medium">默认 Qwen2.5-7B</p>
+              <p class="text-[11px] text-slate-500">显存小于 6GB 可选 3B 或 1.5B 版本</p>
+            </div>
+            <div class="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-1">
+              <span class="text-xs font-mono text-purple-400 font-semibold">02. 初始化引擎</span>
+              <p class="text-xs text-slate-300 font-medium">点击左侧加载按钮</p>
+              <p class="text-[11px] text-slate-500">首次下载权重并编译 WebGPU 着色器</p>
+            </div>
+            <div class="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-1">
+              <span class="text-xs font-mono text-cyan-400 font-semibold">03. 隐私对话</span>
+              <p class="text-xs text-slate-300 font-medium">100% 本地推理</p>
+              <p class="text-[11px] text-slate-500">支持代码高亮、流式输出与实时测速</p>
+            </div>
+          </div>
+
+          <!-- 快捷提示词示例 -->
+          <div class="pt-2 space-y-2">
+            <p class="text-xs text-slate-500">加载模型后，点击下方示例快速提问：</p>
+            <div class="flex flex-wrap justify-center gap-2">
+              <button class="prompt-chip px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/40 text-xs text-slate-300 transition">
+                用 Python 写一个快速排序并解释时间复杂度
+              </button>
+              <button class="prompt-chip px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/40 text-xs text-slate-300 transition">
+                通俗解释 WebGPU 为什么能在浏览器跑大模型？
+              </button>
+              <button class="prompt-chip px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/40 text-xs text-slate-300 transition">
+                帮我制定一份周末杭州两日游深度攻略
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部输入框区域 -->
+      <div class="p-3 sm:p-4 lg:px-6 border-t border-slate-800/80 bg-slate-900/60 backdrop-blur-md">
+        <div class="max-w-4xl mx-auto">
+          <div class="relative flex items-end gap-2 rounded-2xl bg-slate-950 border border-slate-700/80 focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/50 p-2 shadow-inner transition">
+            <textarea
+              id="chat-input"
+              rows="1"
+              disabled
+              placeholder="请先点击左侧「加载 / 初始化模型」按钮..."
+              class="w-full max-h-40 bg-transparent text-sm text-slate-100 placeholder-slate-500 px-2.5 py-2 focus:outline-none resize-none disabled:cursor-not-allowed"
+            ></textarea>
+
+            <!-- 停止生成按钮 (生成中显示) -->
+            <button
+              id="stop-btn"
+              class="hidden shrink-0 p-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-600/20 transition"
+              title="停止生成"
+            >
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+            </button>
+
+            <!-- 发送按钮 -->
+            <button
+              id="send-btn"
+              disabled
+              class="shrink-0 p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white shadow-md shadow-indigo-600/20 transition disabled:cursor-not-allowed"
+              title="发送消息 (Enter)"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            </button>
+          </div>
+          <div class="flex items-center justify-between mt-2 px-1 text-[11px] text-slate-500">
+            <span>Enter 发送 · Shift + Enter 换行</span>
+            <span id="mobile-perf-summary" class="lg:hidden font-mono text-slate-400"></span>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- 核心应用逻辑 (ES Module) -->
+  <script type="module">
+    import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+
+    // ==================== 状态管理 ====================
+    const state = {
+      engine: null,
+      isModelLoaded: false,
+      isLoadingModel: false,
+      isGenerating: false,
+      currentModelId: "Qwen2.5-7B-Instruct-q4f16_1-MLC",
+      messages: [], // { role: 'user' | 'assistant', content: string }
+      gpuSupported: false,
+    };
+
+    // ==================== DOM 元素引用 ====================
+    const el = {
+      sidebar: document.getElementById("sidebar"),
+      sidebarBackdrop: document.getElementById("sidebar-backdrop"),
+      mobileMenuBtn: document.getElementById("mobile-menu-btn"),
+      closeSidebarBtn: document.getElementById("close-sidebar-btn"),
+
+      gpuStatusPill: document.getElementById("gpu-status-pill"),
+      gpuDetails: document.getElementById("gpu-details"),
+      unsupportedBanner: document.getElementById("webgpu-unsupported-banner"),
+      webgpuErrorReason: document.getElementById("webgpu-error-reason"),
+
+      modelSelect: document.getElementById("model-select"),
+      loadModelBtn: document.getElementById("load-model-btn"),
+      loadBtnText: document.getElementById("load-btn-text"),
+      progressWrapper: document.getElementById("progress-wrapper"),
+      progressStage: document.getElementById("progress-stage"),
+      progressPercent: document.getElementById("progress-percent"),
+      progressBar: document.getElementById("progress-bar"),
+      progressDetail: document.getElementById("progress-detail"),
+
+      tempSlider: document.getElementById("temp-slider"),
+      tempValue: document.getElementById("temp-value"),
+      maxTokensSlider: document.getElementById("max-tokens-slider"),
+      maxTokensValue: document.getElementById("max-tokens-value"),
+      systemPrompt: document.getElementById("system-prompt"),
+      resetParamsBtn: document.getElementById("reset-params-btn"),
+
+      clearChatBtn: document.getElementById("clear-chat-btn"),
+      clearCacheBtn: document.getElementById("clear-cache-btn"),
+
+      engineDot: document.getElementById("engine-dot"),
+      engineStatusText: document.getElementById("engine-status-text"),
+      mobileStatusBadge: document.getElementById("mobile-status-badge"),
+
+      metricTtft: document.getElementById("metric-ttft"),
+      metricTps: document.getElementById("metric-tps"),
+      metricTokens: document.getElementById("metric-tokens"),
+      mobilePerfSummary: document.getElementById("mobile-perf-summary"),
+
+      chatMessages: document.getElementById("chat-messages"),
+      welcomeScreen: document.getElementById("welcome-screen"),
+      chatInput: document.getElementById("chat-input"),
+      sendBtn: document.getElementById("send-btn"),
+      stopBtn: document.getElementById("stop-btn"),
+      toastContainer: document.getElementById("toast-container"),
+    };
+
+    // ==================== 工具函数：Toast 提示 ====================
+    function showToast(title, message, type = "info", duration = 5000) {
+      const colors = {
+        info: "bg-slate-900/95 border-indigo-500/40 text-slate-100",
+        success: "bg-emerald-950/95 border-emerald-500/40 text-emerald-100",
+        warning: "bg-amber-950/95 border-amber-500/40 text-amber-100",
+        error: "bg-rose-950/95 border-rose-500/50 text-rose-100",
+      };
+
+      const toast = document.createElement("div");
+      toast.className = `pointer-events-auto p-3.5 rounded-xl border shadow-2xl backdrop-blur-md transition-all duration-300 transform translate-y-0 opacity-100 ${colors[type] || colors.info}`;
+      toast.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+          <div class="space-y-0.5 text-xs">
+            <p class="font-bold">${escapeHtml(title)}</p>
+            <p class="opacity-90 leading-relaxed">${escapeHtml(message)}</p>
+          </div>
+          <button class="text-current opacity-60 hover:opacity-100 p-0.5" onclick="this.parentElement.parentElement.remove()">✕</button>
+        </div>
+      `;
+      el.toastContainer.appendChild(toast);
+
+      if (duration > 0) {
+        setTimeout(() => {
+          toast.style.opacity = "0";
+          toast.style.transform = "translateY(-8px)";
+          setTimeout(() => toast.remove(), 300);
+        }, duration);
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ==================== Markdown 配置与代码复制 ====================
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+      highlight: function (code, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+          try {
+            return hljs.highlight(code, { language: lang }).value;
+          } catch (_) {}
+        }
+        return hljs.highlightAuto(code).value;
+      },
+    });
+
+    function renderMarkdown(text) {
+      const rawHtml = marked.parse(text || "");
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = rawHtml;
+
+      // 为每个 <pre> 代码块注入语言标签和复制按钮
+      tempDiv.querySelectorAll("pre").forEach((pre) => {
+        const codeEl = pre.querySelector("code");
+        const langClass = Array.from(codeEl?.classList || []).find((c) => c.startsWith("language-"));
+        const langName = langClass ? langClass.replace("language-", "") : "code";
+
+        const header = document.createElement("div");
+        header.className = "absolute top-0 left-0 right-0 flex items-center justify-between px-3.5 py-1.5 bg-slate-900/90 border-b border-slate-800 text-[11px] text-slate-400 rounded-t-[0.6rem]";
+        header.innerHTML = `
+          <span class="font-mono uppercase tracking-wider text-slate-400">${escapeHtml(langName)}</span>
+          <button type="button" class="copy-code-btn flex items-center gap-1 text-slate-300 hover:text-indigo-400 transition">
+            <span>复制代码</span>
+          </button>
+        `;
+        pre.appendChild(header);
+      });
+
+      return tempDiv.innerHTML;
+    }
+
+    // 全局事件委托处理代码块复制 (兼容 iframe 环境使用 execCommand)
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest(".copy-code-btn");
+      if (!btn) return;
+      const pre = btn.closest("pre");
+      const codeText = pre?.querySelector("code")?.innerText || "";
+
+      const textarea = document.createElement("textarea");
+      textarea.value = codeText;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand("copy");
+        const span = btn.querySelector("span");
+        if (span) {
+          span.textContent = "已复制 ✓";
+          span.classList.add("text-emerald-400");
+          setTimeout(() => {
+            span.textContent = "复制代码";
+            span.classList.remove("text-emerald-400");
+          }, 2000);
+        }
+      } catch (err) {
+        showToast("复制失败", "无法访问剪贴板，请手动选中复制。", "warning");
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    });
+
+    // ==================== 1. WebGPU 硬件检测 ====================
+    async function checkWebGPU() {
+      if (!("gpu" in navigator)) {
+        setGpuUnsupported("当前浏览器未暴露 navigator.gpu 对象（可能浏览器版本过旧或未开启硬件加速）。");
+        return;
+      }
+
+      try {
+        const adapter = await navigator.gpu.requestAdapter({
+          powerPreference: "high-performance",
+        });
+
+        if (!adapter) {
+          setGpuUnsupported("无法获取有效的 WebGPU 图形适配器（GPU Adapter），请检查显卡驱动或系统设置。");
+          return;
+        }
+
+        // 获取设备信息与硬件限制
+        let info = {};
+        if (typeof adapter.requestAdapterInfo === "function") {
+          info = await adapter.requestAdapterInfo();
+        } else if (adapter.info) {
+          info = adapter.info;
+        }
+
+        const hasF16 = adapter.features.has("shader-f16");
+        const maxBufferBytes = adapter.limits?.maxBufferSize || 0;
+        const maxStorageBytes = adapter.limits?.maxStorageBufferBindingSize || 0;
+        const maxBufferGB = (maxBufferBytes / (1024 ** 3)).toFixed(2);
+        const maxStorageMB = (maxStorageBytes / (1024 ** 2)).toFixed(0);
+
+        const gpuName = info.description || info.device || info.vendor || "兼容 WebGPU 的图形处理器";
+        const arch = info.architecture ? ` (${info.architecture})` : "";
+
+        state.gpuSupported = true;
+        el.gpuStatusPill.className = "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30";
+        el.gpuStatusPill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>支持 WebGPU`;
+
+        el.gpuDetails.innerHTML = `
+          <div class="text-slate-200 font-medium truncate" title="${escapeHtml(gpuName + arch)}">${escapeHtml(gpuName)}${escapeHtml(arch)}</div>
+          <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400 pt-0.5 font-mono">
+            <span>MaxBuffer: <strong class="text-slate-200">${maxBufferGB}GB</strong></span>
+            <span>Storage: <strong class="text-slate-200">${maxStorageMB}MB</strong></span>
+            <span>FP16: <strong class="${hasF16 ? 'text-emerald-400' : 'text-amber-400'}">${hasF16 ? '支持' : '不支持'}</strong></span>
+          </div>
+        `;
+
+        // 若显卡不支持 shader-f16，自动提示或推荐 q4f32_1
+        if (!hasF16) {
+          showToast(
+            "检测到显卡不支持 FP16 着色器",
+            "已为您自动推荐 q4f32_1 兼容量化格式，避免编译错误。",
+            "warning",
+            7000
+          );
+          el.modelSelect.value = "Qwen2.5-7B-Instruct-q4f32_1-MLC";
+        }
+      } catch (err) {
+        setGpuUnsupported(`WebGPU 初始化异常：${err.message || err}`);
+      }
+    }
+
+    function setGpuUnsupported(reason) {
+      state.gpuSupported = false;
+      el.gpuStatusPill.className = "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-500/15 text-rose-300 border border-rose-500/30";
+      el.gpuStatusPill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>不支持`;
+      el.gpuDetails.innerHTML = `<span class="text-rose-300">${escapeHtml(reason)}</span>`;
+
+      el.unsupportedBanner.classList.remove("hidden");
+      el.webgpuErrorReason.textContent = reason;
+      el.loadModelBtn.disabled = true;
+      el.loadBtnText.textContent = "浏览器不支持 WebGPU";
+    }
+
+    // ==================== 2. 加载 / 初始化模型 ====================
+    async function loadSelectedModel() {
+      if (!state.gpuSupported || state.isLoadingModel) return;
+
+      const selectedModel = el.modelSelect.value;
+      state.isLoadingModel = true;
+      state.isModelLoaded = false;
+
+      // 更新 UI 状态
+      el.loadModelBtn.disabled = true;
+      el.modelSelect.disabled = true;
+      el.loadBtnText.textContent = "正在加载模型权重...";
+      el.progressWrapper.classList.remove("hidden");
+      el.progressBar.style.width = "2%";
+      el.progressPercent.textContent = "0%";
+      el.progressStage.textContent = "初始化 WebLLM 引擎...";
+      el.progressDetail.textContent = `目标模型: ${selectedModel}`;
+
+      updateEngineStatus("loading", `正在加载 ${getShortModelName(selectedModel)}...`);
+
+      try {
+        // 如果之前已经加载过引擎，先卸载释放显存
+        if (state.engine) {
+          el.progressStage.textContent = "释放旧模型显存...";
+          await state.engine.unload();
+          state.engine = null;
+        }
+
+        // 进度回调处理
+        const initProgressCallback = (report) => {
+          const pct = Math.min(100, Math.max(0, Math.round((report.progress || 0) * 100)));
+          el.progressBar.style.width = `${pct}%`;
+          el.progressPercent.textContent = `${pct}%`;
+          el.progressDetail.textContent = report.text || "";
+
+          // 根据文本解析阶段提示
+          const txt = (report.text || "").toLowerCase();
+          if (txt.includes("fetching") || txt.includes("download")) {
+            el.progressStage.textContent = "正在下载模型权重分片...";
+          } else if (txt.includes("cache")) {
+            el.progressStage.textContent = "从本地 Cache 读取权重...";
+          } else if (txt.includes("gpu") || txt.includes("shader") || txt.includes("compil")) {
+            el.progressStage.textContent = "正在编译 WebGPU 着色器...";
+          } else if (pct === 100) {
+            el.progressStage.textContent = "模型初始化完成！";
+          } else {
+            el.progressStage.textContent = "加载推理组件中...";
+          }
+        };
+
+        // 创建 MLCEngine 实例
+        state.engine = await webllm.CreateMLCEngine(selectedModel, {
+          initProgressCallback,
+        });
+
+        state.currentModelId = selectedModel;
+        state.isModelLoaded = true;
+
+        // 启用聊天输入框
+        el.chatInput.disabled = false;
+        el.chatInput.placeholder = `向 ${getShortModelName(selectedModel)} 提问... (Enter 发送)`;
+        el.sendBtn.disabled = false;
+        el.loadBtnText.textContent = "重新加载 / 切换模型";
+
+        updateEngineStatus("ready", `已就绪 · ${getShortModelName(selectedModel)}`);
+        showToast(
+          "模型加载成功",
+          `${getShortModelName(selectedModel)} 已成功载入本地显存，现在可以开始对话！`,
+          "success"
+        );
+
+        // 移动端自动收起侧边栏方便对话
+        if (window.innerWidth < 1024) {
+          closeSidebar();
+        }
+      } catch (err) {
+        console.error("Model load error:", err);
+        state.isModelLoaded = false;
+        updateEngineStatus("error", "模型加载失败");
+        el.loadBtnText.textContent = "重试加载模型";
+
+        const friendlyError = parseWebLLMError(err, selectedModel);
+        el.progressStage.textContent = "加载中断";
+        el.progressDetail.textContent = friendlyError;
+        showToast("模型初始化失败", friendlyError, "error", 9000);
+      } finally {
+        state.isLoadingModel = false;
+        el.loadModelBtn.disabled = false;
+        el.modelSelect.disabled = false;
+      }
+    }
+
+    function getShortModelName(modelId) {
+      return modelId.replace("-Instruct", "").replace("-MLC", "");
+    }
+
+    // 友好错误解析 (重点处理 OOM、网络断开、模型 ID 异常)
+    function parseWebLLMError(err, modelId) {
+      const msg = String(err?.message || err || "");
+      const lower = msg.toLowerCase();
+
+      if (
+        lower.includes("oom") ||
+        lower.includes("out of memory") ||
+        lower.includes("allocation") ||
+        lower.includes("device lost") ||
+        lower.includes("buffer") ||
+        lower.includes("createbuffer")
+      ) {
+        return `【显存不足 (WebGPU OOM)】当前设备显存或统一内存不足以运行 ${getShortModelName(modelId)}。请在左侧下拉框切换到「Qwen2.5-3B」或「Qwen2.5-1.5B」轻量模型后再试，并关闭其他占用显卡的标签页。`;
+      }
+
+      if (
+        lower.includes("fetch") ||
+        lower.includes("network") ||
+        lower.includes("failed to load") ||
+        lower.includes("err_")
+      ) {
+        return `【网络下载中断】下载模型权重分片失败（可能是 HuggingFace CDN 连接超时）。请检查网络连接后再次点击「加载模型」，已下载的分片会自动断点续传。`;
+      }
+
+      if (lower.includes("modelrecord") || lower.includes("not found") || lower.includes("cannot find")) {
+        return `【模型配置未找到】WebLLM 预设列表中未匹配到 ${modelId}，请尝试切换其他 Qwen2.5 量化版本。`;
+      }
+
+      if (lower.includes("f16") || lower.includes("shader")) {
+        return `【着色器编译失败】当前显卡可能不支持 FP16 精度计算，请在左侧切换为「Qwen2.5-7B-Instruct (q4f32_1)」高兼容版本。`;
+      }
+
+      return `加载异常：${msg}`;
+    }
+
+    function updateEngineStatus(status, text) {
+      el.engineStatusText.textContent = text;
+      el.mobileStatusBadge.textContent = text;
+
+      if (status === "ready") {
+        el.engineDot.className = "w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]";
+      } else if (status === "loading") {
+        el.engineDot.className = "w-2 h-2 rounded-full bg-cyan-400 animate-ping";
+      } else if (status === "error") {
+        el.engineDot.className = "w-2 h-2 rounded-full bg-rose-500";
+      } else {
+        el.engineDot.className = "w-2 h-2 rounded-full bg-slate-500";
+      }
+    }
+
+    // ==================== 3. 对话生成与流式输出 ====================
+    async function sendMessage() {
+      const content = el.chatInput.value.trim();
+      if (!content || state.isGenerating) return;
+
+      if (!state.isModelLoaded || !state.engine) {
+        showToast("模型尚未加载", "请先点击左侧「加载 / 初始化模型」按钮。", "warning");
+        return;
+      }
+
+      // 隐藏欢迎界面
+      if (el.welcomeScreen) {
+        el.welcomeScreen.classList.add("hidden");
+      }
+
+      // 清空并重置输入框高度
+      el.chatInput.value = "";
+      el.chatInput.style.height = "auto";
+
+      // 添加用户消息到历史和界面
+      state.messages.push({ role: "user", content });
+      appendMessageBubble("user", content);
+
+      // 创建 AI 消息占位气泡
+      const aiBubble = appendMessageBubble("assistant", "", true);
+      const contentContainer = aiBubble.querySelector(".markdown-body");
+
+      // 切换生成状态 UI
+      state.isGenerating = true;
+      el.sendBtn.classList.add("hidden");
+      el.stopBtn.classList.remove("hidden");
+      el.chatInput.disabled = true;
+
+      const temperature = parseFloat(el.tempSlider.value);
+      const maxTokens = parseInt(el.maxTokensSlider.value, 10);
+      const sysPrompt = el.systemPrompt.value.trim();
+
+      // 构建完整上下文消息列表
+      const conversation = [];
+      if (sysPrompt) {
+        conversation.push({ role: "system", content: sysPrompt });
+      }
+      conversation.push(...state.messages);
+
+      let fullReply = "";
+      let tokenCount = 0;
+      const startTime = performance.now();
+      let firstTokenTime = null;
+
+      try {
+        const chunks = await state.engine.chat.completions.create({
+          messages: conversation,
+          temperature,
+          max_tokens: maxTokens,
+          stream: true,
+          stream_options: { include_usage: true },
+        });
+
+        for await (const chunk of chunks) {
+          const delta = chunk.choices?.[0]?.delta?.content || "";
+          if (delta) {
+            if (firstTokenTime === null) {
+              firstTokenTime = performance.now();
+              const ttftSec = ((firstTokenTime - startTime) / 1000).toFixed(2);
+              el.metricTtft.textContent = `${ttftSec}s`;
+            }
+
+            fullReply += delta;
+            tokenCount++;
+
+            // 实时流式渲染 Markdown
+            contentContainer.innerHTML = renderMarkdown(fullReply);
+            scrollToBottom();
+
+            // 实时更新生成速度 (Tokens/sec)
+            const elapsedSec = (performance.now() - (firstTokenTime || startTime)) / 1000;
+            if (elapsedSec > 0.05) {
+              const tps = (tokenCount / elapsedSec).toFixed(1);
+              el.metricTps.textContent = `${tps} tok/s`;
+              el.metricTokens.textContent = `${tokenCount}`;
+              el.mobilePerfSummary.textContent = `${tps} tok/s`;
+            }
+          }
+
+          // 如果最后一个 chunk 包含精确 usage 统计
+          if (chunk.usage) {
+            const completionTokens = chunk.usage.completion_tokens || tokenCount;
+            const totalGenSec = (performance.now() - (firstTokenTime || startTime)) / 1000;
+            if (totalGenSec > 0) {
+              const finalTps = (completionTokens / totalGenSec).toFixed(1);
+              el.metricTps.textContent = `${finalTps} tok/s`;
+              el.metricTokens.textContent = `${completionTokens}`;
+              el.mobilePerfSummary.textContent = `${finalTps} tok/s · ${completionTokens} tok`;
+            }
+          }
+        }
+
+        if (fullReply) {
+          state.messages.push({ role: "assistant", content: fullReply });
+        }
+      } catch (err) {
+        console.error("Generation error:", err);
+        const errMsg = String(err?.message || err);
+        if (errMsg.toLowerCase().includes("interrupt") || errMsg.toLowerCase().includes("abort")) {
+          if (fullReply) {
+            state.messages.push({ role: "assistant", content: fullReply + "\n\n*(已手动停止生成)*" });
+            contentContainer.innerHTML = renderMarkdown(fullReply + "\n\n*(已手动停止生成)*");
+          }
+        } else {
+          const friendly = parseWebLLMError(err, state.currentModelId);
+          contentContainer.innerHTML = `<div class="text-rose-400 text-xs">${escapeHtml(friendly)}</div>`;
+          showToast("生成过程中断", friendly, "error", 8000);
+        }
+      } finally {
+        contentContainer.classList.remove("typing-cursor");
+        state.isGenerating = false;
+        el.stopBtn.classList.add("hidden");
+        el.sendBtn.classList.remove("hidden");
+        el.chatInput.disabled = false;
+        el.chatInput.focus();
+        scrollToBottom();
+      }
+    }
+
+    // 中断生成
+    function stopGeneration() {
+      if (state.engine && state.isGenerating) {
+        state.engine.interruptGenerate();
+      }
+    }
+
+    // 渲染消息气泡
+    function appendMessageBubble(role, text, isStreaming = false) {
+      const wrapper = document.createElement("div");
+      wrapper.className = `max-w-4xl mx-auto flex gap-3 sm:gap-4 ${role === "user" ? "justify-end" : "justify-start"}`;
+
+      if (role === "user") {
+        wrapper.innerHTML = `
+          <div class="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-tr-sm bg-indigo-600 text-white px-4 py-3 text-sm leading-relaxed shadow-md shadow-indigo-950/40 whitespace-pre-wrap break-words">${escapeHtml(text)}</div>
+          <div class="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-xs font-bold text-slate-300">
+            我
+          </div>
+        `;
+      } else {
+        wrapper.innerHTML = `
+          <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-md shadow-indigo-500/20">
+            <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <div class="flex-1 min-w-0 max-w-[90%] sm:max-w-[85%] rounded-2xl rounded-tl-sm bg-slate-900/90 border border-slate-800/90 px-4 py-3.5 text-sm text-slate-200 shadow-sm">
+            <div class="markdown-body break-words ${isStreaming ? "typing-cursor" : ""}">${text ? renderMarkdown(text) : ""}</div>
+          </div>
+        `;
+      }
+
+      el.chatMessages.appendChild(wrapper);
+      scrollToBottom();
+      return wrapper;
+    }
+
+    function scrollToBottom() {
+      el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+    }
+
+    // ==================== 4. 辅助控制与事件绑定 ====================
+    function openSidebar() {
+      el.sidebar.classList.remove("-translate-x-full");
+      el.sidebarBackdrop.classList.remove("hidden");
+    }
+
+    function closeSidebar() {
+      el.sidebar.classList.add("-translate-x-full");
+      el.sidebarBackdrop.classList.add("hidden");
+    }
+
+    el.mobileMenuBtn.addEventListener("click", openSidebar);
+    el.closeSidebarBtn.addEventListener("click", closeSidebar);
+    el.sidebarBackdrop.addEventListener("click", closeSidebar);
+
+    el.loadModelBtn.addEventListener("click", loadSelectedModel);
+    el.sendBtn.addEventListener("click", sendMessage);
+    el.stopBtn.addEventListener("click", stopGeneration);
+
+    // 输入框自动增高 & 回车发送
+    el.chatInput.addEventListener("input", () => {
+      el.chatInput.style.height = "auto";
+      el.chatInput.style.height = Math.min(el.chatInput.scrollHeight, 160) + "px";
+    });
+
+    el.chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // 参数滑块同步
+    el.tempSlider.addEventListener("input", () => {
+      el.tempValue.textContent = parseFloat(el.tempSlider.value).toFixed(2);
+    });
+
+    el.maxTokensSlider.addEventListener("input", () => {
+      el.maxTokensValue.textContent = el.maxTokensSlider.value;
+    });
+
+    el.resetParamsBtn.addEventListener("click", () => {
+      el.tempSlider.value = "0.7";
+      el.tempValue.textContent = "0.70";
+      el.maxTokensSlider.value = "2048";
+      el.maxTokensValue.textContent = "2048";
+      el.systemPrompt.value = "你是 Qwen（通义千问），一个运行在用户浏览器本地 WebGPU 上的智能助手。请用清晰、准确、友好的中文回答问题。";
+      showToast("参数已重置", "推理温度与最大输出长度已恢复默认值。", "info", 2500);
+    });
+
+    // 清空对话历史
+    el.clearChatBtn.addEventListener("click", async () => {
+      if (state.isGenerating) {
+        stopGeneration();
+      }
+      state.messages = [];
+      if (state.engine) {
+        await state.engine.resetChat();
+      }
+      // 移除所有聊天气泡，保留欢迎页
+      Array.from(el.chatMessages.children).forEach((child) => {
+        if (child.id !== "welcome-screen") {
+          child.remove();
+        }
+      });
+      if (el.welcomeScreen) {
+        el.welcomeScreen.classList.remove("hidden");
+      }
+      el.metricTtft.textContent = "--";
+      el.metricTps.textContent = "-- tok/s";
+      el.metricTokens.textContent = "0";
+      el.mobilePerfSummary.textContent = "";
+      showToast("对话已清空", "上下文记忆已重置。", "info", 2500);
+    });
+
+    // 清理浏览器 Cache Storage 里的模型缓存
+    el.clearCacheBtn.addEventListener("click", async () => {
+      try {
+        if (!("caches" in window)) {
+          showToast("不支持清理", "当前环境无法访问 Cache Storage API。", "warning");
+          return;
+        }
+        const keys = await caches.keys();
+        const webllmKeys = keys.filter((k) => k.includes("webllm") || k.includes("mlc"));
+        if (webllmKeys.length === 0) {
+          showToast("本地无模型缓存", "当前浏览器 Cache Storage 中未发现已缓存的模型权重。", "info");
+          return;
+        }
+        for (const key of webllmKeys) {
+          await caches.delete(key);
+        }
+        showToast(
+          "模型缓存已清理",
+          `已删除 ${webllmKeys.length} 个本地缓存存储桶，释放了磁盘空间。下次加载需重新下载权重。`,
+          "success",
+          6000
+        );
+      } catch (err) {
+        showToast("清理缓存失败", err.message || String(err), "error");
+      }
+    });
+
+    // 快捷示例点击填入并发送
+    document.querySelectorAll(".prompt-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const text = chip.textContent.trim();
+        if (!state.isModelLoaded) {
+          showToast("请先加载模型", "点击左侧的「加载 / 初始化模型」按钮后即可一键发送示例问题。", "warning");
+          if (window.innerWidth < 1024) openSidebar();
+          return;
+        }
+        el.chatInput.value = text;
+        sendMessage();
+      });
+    });
+
+    // 启动初始化：检测 WebGPU 硬件
+    checkWebGPU();
+  </script>
+</body>
+</html>
