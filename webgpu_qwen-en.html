@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Qwen 7B WebGPU - Directly browser. Private. Simple.</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <!-- Marked.js for Markdown Rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Highlight.js for Code Syntax Highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            slate: {
+              850: '#151e2e',
+              900: '#0f172a',
+              950: '#090d16',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* Custom Scrollbar & Base Typography */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.25);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.45);
+    }
+
+    /* Markdown Content Styling */
+    .markdown-body p {
+      margin-bottom: 0.75rem;
+      line-height: 1.65;
+    }
+    .markdown-body p:last-child {
+      margin-bottom: 0;
+    }
+    .markdown-body ul, .markdown-body ol {
+      margin-left: 1.25rem;
+      margin-bottom: 0.75rem;
+      list-style-type: disc;
+    }
+    .markdown-body ol {
+      list-style-type: decimal;
+    }
+    .markdown-body li {
+      margin-bottom: 0.25rem;
+    }
+    .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+      font-weight: 600;
+      margin-top: 1rem;
+      margin-bottom: 0.5rem;
+      color: #f8fafc;
+    }
+    .markdown-body h1 { font-size: 1.25rem; }
+    .markdown-body h2 { font-size: 1.125rem; }
+    .markdown-body h3 { font-size: 1rem; }
+    .markdown-body code:not(pre code) {
+      background: rgba(99, 102, 241, 0.18);
+      color: #a5b4fc;
+      padding: 0.15rem 0.35rem;
+      border-radius: 0.375rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85em;
+    }
+    .markdown-body pre {
+      position: relative;
+      background: #0b101b !important;
+      border: 1px solid rgba(51, 65, 85, 0.7);
+      border-radius: 0.625rem;
+      padding: 2.25rem 1rem 0.875rem 1rem;
+      margin: 0.75rem 0;
+      overflow-x: auto;
+    }
+    .markdown-body pre code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      background: transparent !important;
+      padding: 0 !important;
+    }
+    .markdown-body blockquote {
+      border-left: 3px solid #6366f1;
+      padding-left: 0.875rem;
+      color: #94a3b8;
+      margin: 0.75rem 0;
+    }
+    .markdown-body table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.75rem 0;
+      font-size: 0.875rem;
+    }
+    .markdown-body th, .markdown-body td {
+      border: 1px solid #334155;
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+    }
+    .markdown-body th {
+      background: rgba(30, 41, 59, 0.8);
+    }
+
+    /* Blinking Cursor Animation */
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .typing-cursor::after {
+      content: '▋';
+      display: inline-block;
+      margin-left: 2px;
+      color: #818cf8;
+      animation: blink 1s infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased h-screen flex flex-col overflow-hidden selection:bg-indigo-500/30 selection:text-indigo-200">
+
+  <!-- Global Notification Toast Stack (replaces native alert) -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-md pointer-events-none"></div>
+
+  <!-- Mobile Top Header -->
+  <header class="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-900/90 border-b border-slate-800 backdrop-blur-md z-30">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+        <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      </div>
+      <div>
+        <h1 class="font-bold text-sm tracking-tight text-white">Qwen 7B WebGPU</h1>
+        <p id="mobile-status-badge" class="text-[11px] text-slate-400">Model not loaded</p>
+      </div>
+    </div>
+    <button id="mobile-menu-btn" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition" aria-label="Open settings">
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+      </svg>
+    </button>
+  </header>
+
+  <!-- Main Workspace Layout -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- Mobile Sidebar Backdrop -->
+    <div id="sidebar-backdrop" class="fixed inset-0 bg-black/60 backdrop-blur-xs z-30 hidden lg:hidden"></div>
+
+    <!-- Left Control Sidebar -->
+    <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-40 w-80 sm:w-85 bg-slate-900/95 border-r border-slate-800/80 flex flex-col transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-out">
+      <!-- Brand Header -->
+      <div class="p-5 border-b border-slate-800/80 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 shrink-0">
+            <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <h1 class="font-bold text-base text-white tracking-tight">Qwen 7B WebGPU</h1>
+            </div>
+            <span class="inline-block mt-0.5 px-2 py-0.5 text-[10px] font-medium bg-indigo-500/15 text-indigo-300 border border-indigo-500/25 rounded-full">
+              100% Local · Private · Zero Server
+            </span>
+          </div>
+        </div>
+        <button id="close-sidebar-btn" class="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800" aria-label="Close sidebar">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Scrollable Controls Section -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-5">
+
+        <!-- 1. WebGPU Hardware Diagnostics Card -->
+        <div class="rounded-xl bg-slate-950/80 border border-slate-800 p-3.5 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+              </svg>
+              WebGPU Hardware
+            </span>
+            <span id="gpu-status-pill" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-300">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+              Checking...
+            </span>
+          </div>
+          <div id="gpu-details" class="text-xs text-slate-400 space-y-1 leading-relaxed">
+            Inspecting browser GPU adapter capabilities...
+          </div>
+        </div>
+
+        <!-- 2. Quantized Model Selection & Initialization -->
+        <div class="space-y-3">
+          <label for="model-select" class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Select Quantized Model (MLC)
+          </label>
+          <div class="relative">
+            <select id="model-select" class="w-full appearance-none rounded-xl bg-slate-950 border border-slate-700/80 px-3.5 py-2.5 pr-9 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+              <option value="Qwen2.5-7B-Instruct-q4f16_1-MLC" selected>
+                Qwen2.5-7B-Instruct (Recommended · ~4.5 GB VRAM)
+              </option>
+              <option value="Qwen2.5-7B-Instruct-q4f32_1-MLC">
+                Qwen2.5-7B-Instruct FP32 (Fallback · ~5.2 GB VRAM)
+              </option>
+              <option value="Qwen2.5-3B-Instruct-q4f16_1-MLC">
+                Qwen2.5-3B-Instruct (Balanced · ~2.2 GB VRAM)
+              </option>
+              <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC">
+                Qwen2.5-1.5B-Instruct (Lightweight · ~1.2 GB VRAM)
+              </option>
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+
+          <!-- VRAM & Browser Cache Note -->
+          <div class="rounded-xl bg-indigo-950/30 border border-indigo-500/20 p-3 text-[11px] text-indigo-200/85 leading-relaxed space-y-1">
+            <p class="font-medium text-indigo-300 flex items-center gap-1">
+              <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              VRAM & Local Cache Info:
+            </p>
+            <p>• <strong>Qwen 7B</strong> downloads ~<strong>4.5 GB</strong> on first run and requires at least <strong>6–8 GB</strong> dedicated VRAM or Apple Silicon unified memory.</p>
+            <p>• Weights are persisted in your browser's <strong>Cache Storage</strong> for instant, offline reloads on subsequent visits.</p>
+          </div>
+
+          <!-- Load / Initialize Button -->
+          <button id="load-model-btn" class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-sm shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition active:scale-[0.99]">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <span id="load-btn-text">Load Model</span>
+          </button>
+
+          <!-- Progress Bar Container -->
+          <div id="progress-wrapper" class="hidden rounded-xl bg-slate-950 border border-slate-800 p-3 space-y-2">
+            <div class="flex items-center justify-between text-xs">
+              <span id="progress-stage" class="text-cyan-400 font-medium truncate max-w-[75%]">Initializing...</span>
+              <span id="progress-percent" class="font-mono text-slate-300 font-semibold">0%</span>
+            </div>
+            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div id="progress-bar" class="h-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-500 rounded-full transition-all duration-200" style="width: 0%"></div>
+            </div>
+            <p id="progress-detail" class="text-[11px] text-slate-400 font-mono break-all line-clamp-2">
+              Waiting for WebLLM runtime...
+            </p>
+          </div>
+        </div>
+
+        <hr class="border-slate-800/80" />
+
+        <!-- 3. Generation & System Prompt Settings -->
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Generation Settings</span>
+            <button id="reset-params-btn" class="text-[11px] text-indigo-400 hover:text-indigo-300 transition">Reset Defaults</button>
+          </div>
+
+          <!-- Temperature -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <label for="temp-slider" class="text-slate-300">Temperature</label>
+              <span id="temp-value" class="font-mono text-indigo-400 font-medium">0.70</span>
+            </div>
+            <input id="temp-slider" type="range" min="0" max="1.5" step="0.05" value="0.7" class="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg" />
+            <div class="flex justify-between text-[10px] text-slate-500">
+              <span>Deterministic (0.0)</span>
+              <span>Creative (1.5)</span>
+            </div>
+          </div>
+
+          <!-- Top-P -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <label for="top-p-slider" class="text-slate-300">Top-P (Nucleus Sampling)</label>
+              <span id="top-p-value" class="font-mono text-indigo-400 font-medium">0.90</span>
+            </div>
+            <input id="top-p-slider" type="range" min="0.1" max="1.0" step="0.05" value="0.9" class="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg" />
+          </div>
+
+          <!-- Max Tokens -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <label for="max-tokens-slider" class="text-slate-300">Max Output Tokens</label>
+              <span id="max-tokens-value" class="font-mono text-indigo-400 font-medium">2048</span>
+            </div>
+            <input id="max-tokens-slider" type="range" min="256" max="4096" step="256" value="2048" class="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg" />
+          </div>
+
+          <!-- System Prompt -->
+          <div class="space-y-1.5">
+            <label for="system-prompt" class="block text-xs text-slate-300">System Prompt</label>
+            <textarea id="system-prompt" rows="3" class="w-full rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition resize-none" placeholder="Define the assistant's persona and instructions...">You are Qwen, a helpful, accurate, and concise AI assistant running 100% locally in the user's browser via WebGPU.</textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar Footer Utilities -->
+      <div class="p-4 border-t border-slate-800/80 bg-slate-950/50 space-y-2">
+        <div class="grid grid-cols-2 gap-2">
+          <button id="clear-chat-btn" class="py-2 px-3 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-700/60 transition">
+            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Clear Chat
+          </button>
+          <button id="clear-cache-btn" class="py-2 px-3 rounded-xl bg-slate-800/90 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-800/60 text-slate-300 text-xs font-medium flex items-center justify-center gap-1.5 border border-slate-700/60 transition" title="Delete locally cached model weights from browser storage">
+            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+            Clear Cache
+          </button>
+        </div>
+        <p class="text-[10px] text-center text-slate-500">
+          Powered by <span class="text-slate-400">@mlc-ai/web-llm</span> · Zero Telemetry
+        </p>
+      </div>
+    </aside>
+
+    <!-- Right Main Chat Workspace -->
+    <main class="flex-1 flex flex-col bg-slate-950 relative min-w-0">
+
+      <!-- Top Telemetry & Status Bar (Desktop) -->
+      <div class="hidden lg:flex items-center justify-between px-6 py-3.5 border-b border-slate-800/70 bg-slate-900/40 backdrop-blur-md">
+        <div class="flex items-center gap-3">
+          <div id="engine-indicator" class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs">
+            <span id="engine-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+            <span id="engine-status-text" class="text-slate-300 font-medium">Standby · Click "Load Model" to begin</span>
+          </div>
+        </div>
+
+        <!-- Live Inference Telemetry Badges -->
+        <div id="perf-metrics" class="flex items-center gap-3 text-xs font-mono text-slate-400">
+          <div class="flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800/80" title="WebGPU Hardware Capability">
+            <span class="text-slate-500">GPU:</span>
+            <span id="metric-gpu-badge" class="text-slate-300 font-semibold">Checking...</span>
+          </div>
+          <div class="flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800/80" title="Time To First Token">
+            <span class="text-slate-500">TTFT:</span>
+            <span id="metric-ttft" class="text-cyan-400 font-semibold">--</span>
+          </div>
+          <div class="flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800/80" title="Generation Throughput (Tokens/sec)">
+            <span class="text-slate-500">Speed:</span>
+            <span id="metric-tps" class="text-emerald-400 font-semibold">-- tok/s</span>
+          </div>
+          <div class="flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800/80" title="Tokens Generated in Last Turn">
+            <span class="text-slate-500">Tokens:</span>
+            <span id="metric-tokens" class="text-indigo-400 font-semibold">0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- WebGPU Unsupported Banner (Hidden by default) -->
+      <div id="webgpu-unsupported-banner" class="hidden mx-4 sm:mx-6 mt-4 p-4 rounded-2xl bg-rose-950/60 border border-rose-500/40 text-rose-100 shadow-lg">
+        <div class="flex items-start gap-3">
+          <svg class="w-6 h-6 text-rose-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div class="space-y-1.5 text-xs sm:text-sm">
+            <h3 class="font-bold text-rose-200">WebGPU is Unavailable in This Browser</h3>
+            <p id="webgpu-error-reason" class="text-rose-200/90">No compatible <code>navigator.gpu</code> adapter was detected.</p>
+            <div class="pt-1 text-xs text-rose-200/80 space-y-1">
+              <p class="font-semibold text-rose-200">Troubleshooting Steps:</p>
+              <ul class="list-disc ml-4 space-y-0.5">
+                <li>Use a recent desktop build of <strong>Chrome (113+)</strong>, <strong>Microsoft Edge (113+)</strong>, or <strong>Safari (18+)</strong>.</li>
+                <li>Verify that <strong>Hardware Acceleration</strong> is enabled in your browser settings and inspect <code>chrome://gpu</code>.</li>
+                <li>On Linux, try enabling <code>chrome://flags/#enable-unsafe-webgpu</code> and restarting the browser.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inline Cache Confirmation Modal (replaces native confirm) -->
+      <div id="cache-confirm-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+        <div class="max-w-sm w-full rounded-2xl bg-slate-900 border border-slate-700 p-5 shadow-2xl space-y-4">
+          <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0 text-rose-400">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </div>
+            <div class="space-y-1">
+              <h3 class="text-sm font-bold text-white">Clear Cached Model Weights?</h3>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                This will delete all downloaded WebLLM / Qwen model shards from your browser's local Cache Storage and IndexedDB. You will need to re-download them next time.
+              </p>
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 pt-1">
+            <button id="cancel-clear-cache-btn" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition">
+              Cancel
+            </button>
+            <button id="confirm-clear-cache-btn" class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-medium text-white shadow-md shadow-rose-600/20 transition">
+              Delete Cache
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scrollable Chat Messages Area -->
+      <div id="chat-messages" class="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 scroll-smooth">
+        <!-- Empty State / Welcome Guide -->
+        <div id="welcome-screen" class="max-w-2xl mx-auto my-6 sm:my-12 text-center space-y-6">
+          <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500/20 via-purple-500/20 to-cyan-500/20 border border-indigo-500/30 shadow-xl shadow-indigo-500/10">
+            <svg class="w-8 h-8 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+            </svg>
+          </div>
+
+          <div class="space-y-2">
+            <h2 class="text-xl sm:text-2xl font-bold text-white tracking-tight">Directly in your browser. Private. Simple.</h2>
+            <p class="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto leading-relaxed">
+              Run Qwen2.5 7B natively on your GPU using WebGPU and MLC compilation. No backend servers, no API keys, and zero data ever leaves your device.
+            </p>
+          </div>
+
+          <!-- 3-Step Quickstart Cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left max-w-xl mx-auto">
+            <div class="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-1">
+              <span class="text-xs font-mono text-indigo-400 font-semibold">01. Choose Model</span>
+              <p class="text-xs text-slate-300 font-medium">Qwen2.5-7B Default</p>
+              <p class="text-[11px] text-slate-500">Switch to 3B or 1.5B if your GPU has &lt;6 GB VRAM</p>
+            </div>
+            <div class="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-1">
+              <span class="text-xs font-mono text-purple-400 font-semibold">02. Load Weights</span>
+              <p class="text-xs text-slate-300 font-medium">Click "Load Model"</p>
+              <p class="text-[11px] text-slate-500">Downloads shards once &amp; compiles WebGPU shaders</p>
+            </div>
+            <div class="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-1">
+              <span class="text-xs font-mono text-cyan-400 font-semibold">03. Chat Offline</span>
+              <p class="text-xs text-slate-300 font-medium">100% On-Device</p>
+              <p class="text-[11px] text-slate-500">Streaming Markdown, syntax highlighting &amp; live telemetry</p>
+            </div>
+          </div>
+
+          <!-- Sample Prompt Chips -->
+          <div class="pt-2 space-y-2">
+            <p class="text-xs text-slate-500">Once loaded, click any sample prompt below to try it out:</p>
+            <div class="flex flex-wrap justify-center gap-2">
+              <button class="prompt-chip px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/40 text-xs text-slate-300 transition">
+                Explain how WebGPU runs 7B LLMs directly in a browser
+              </button>
+              <button class="prompt-chip px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/40 text-xs text-slate-300 transition">
+                Write a clean Python async web scraper with rate limiting
+              </button>
+              <button class="prompt-chip px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/40 text-xs text-slate-300 transition">
+                Find and fix the subtle bug in a JavaScript closure loop
+              </button>
+              <button class="prompt-chip px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/40 text-xs text-slate-300 transition">
+                Summarize the key trade-offs between INT4 and FP16 quantization
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Input Composer -->
+      <div class="p-3 sm:p-4 lg:px-6 border-t border-slate-800/80 bg-slate-900/60 backdrop-blur-md">
+        <div class="max-w-4xl mx-auto">
+          <div class="relative flex items-end gap-2 rounded-2xl bg-slate-950 border border-slate-700/80 focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/50 p-2 shadow-inner transition">
+            <textarea
+              id="chat-input"
+              rows="1"
+              disabled
+              placeholder='Click "Load Model" in the sidebar to initialize Qwen...'
+              class="w-full max-h-40 bg-transparent text-sm text-slate-100 placeholder-slate-500 px-2.5 py-2 focus:outline-none resize-none disabled:cursor-not-allowed"
+            ></textarea>
+
+            <!-- Stop Generation Button (Shown while streaming) -->
+            <button
+              id="stop-btn"
+              class="hidden shrink-0 p-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-600/20 transition"
+              title="Stop generating"
+              aria-label="Stop generating"
+            >
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+            </button>
+
+            <!-- Send Button -->
+            <button
+              id="send-btn"
+              disabled
+              class="shrink-0 p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white shadow-md shadow-indigo-600/20 transition disabled:cursor-not-allowed"
+              title="Send message (Enter)"
+              aria-label="Send message"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            </button>
+          </div>
+          <div class="flex items-center justify-between mt-2 px-1 text-[11px] text-slate-500">
+            <span>Enter to send · Shift + Enter for new line</span>
+            <span id="mobile-perf-summary" class="lg:hidden font-mono text-slate-400"></span>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Core Application Logic (ES Module) -->
+  <script type="module">
+    import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+
+    // ==================== Application State ====================
+    const state = {
+      engine: null,
+      isModelLoaded: false,
+      isLoadingModel: false,
+      isGenerating: false,
+      currentModelId: "Qwen2.5-7B-Instruct-q4f16_1-MLC",
+      messages: [], // { role: 'user' | 'assistant', content: string }
+      gpuSupported: false,
+    };
+
+    // ==================== DOM Element References ====================
+    const el = {
+      sidebar: document.getElementById("sidebar"),
+      sidebarBackdrop: document.getElementById("sidebar-backdrop"),
+      mobileMenuBtn: document.getElementById("mobile-menu-btn"),
+      closeSidebarBtn: document.getElementById("close-sidebar-btn"),
+
+      gpuStatusPill: document.getElementById("gpu-status-pill"),
+      gpuDetails: document.getElementById("gpu-details"),
+      unsupportedBanner: document.getElementById("webgpu-unsupported-banner"),
+      webgpuErrorReason: document.getElementById("webgpu-error-reason"),
+
+      modelSelect: document.getElementById("model-select"),
+      loadModelBtn: document.getElementById("load-model-btn"),
+      loadBtnText: document.getElementById("load-btn-text"),
+      progressWrapper: document.getElementById("progress-wrapper"),
+      progressStage: document.getElementById("progress-stage"),
+      progressPercent: document.getElementById("progress-percent"),
+      progressBar: document.getElementById("progress-bar"),
+      progressDetail: document.getElementById("progress-detail"),
+
+      tempSlider: document.getElementById("temp-slider"),
+      tempValue: document.getElementById("temp-value"),
+      topPSlider: document.getElementById("top-p-slider"),
+      topPValue: document.getElementById("top-p-value"),
+      maxTokensSlider: document.getElementById("max-tokens-slider"),
+      maxTokensValue: document.getElementById("max-tokens-value"),
+      systemPrompt: document.getElementById("system-prompt"),
+      resetParamsBtn: document.getElementById("reset-params-btn"),
+
+      clearChatBtn: document.getElementById("clear-chat-btn"),
+      clearCacheBtn: document.getElementById("clear-cache-btn"),
+      cacheConfirmModal: document.getElementById("cache-confirm-modal"),
+      cancelClearCacheBtn: document.getElementById("cancel-clear-cache-btn"),
+      confirmClearCacheBtn: document.getElementById("confirm-clear-cache-btn"),
+
+      engineDot: document.getElementById("engine-dot"),
+      engineStatusText: document.getElementById("engine-status-text"),
+      mobileStatusBadge: document.getElementById("mobile-status-badge"),
+
+      metricGpuBadge: document.getElementById("metric-gpu-badge"),
+      metricTtft: document.getElementById("metric-ttft"),
+      metricTps: document.getElementById("metric-tps"),
+      metricTokens: document.getElementById("metric-tokens"),
+      mobilePerfSummary: document.getElementById("mobile-perf-summary"),
+
+      chatMessages: document.getElementById("chat-messages"),
+      welcomeScreen: document.getElementById("welcome-screen"),
+      chatInput: document.getElementById("chat-input"),
+      sendBtn: document.getElementById("send-btn"),
+      stopBtn: document.getElementById("stop-btn"),
+      toastContainer: document.getElementById("toast-container"),
+    };
+
+    // ==================== Utility: Toast Notifications ====================
+    function showToast(title, message, type = "info", duration = 5000) {
+      const colors = {
+        info: "bg-slate-900/95 border-indigo-500/40 text-slate-100",
+        success: "bg-emerald-950/95 border-emerald-500/40 text-emerald-100",
+        warning: "bg-amber-950/95 border-amber-500/40 text-amber-100",
+        error: "bg-rose-950/95 border-rose-500/50 text-rose-100",
+      };
+
+      const toast = document.createElement("div");
+      toast.className = `pointer-events-auto p-3.5 rounded-xl border shadow-2xl backdrop-blur-md transition-all duration-300 transform translate-y-0 opacity-100 ${colors[type] || colors.info}`;
+      toast.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+          <div class="space-y-0.5 text-xs">
+            <p class="font-bold">${escapeHtml(title)}</p>
+            <p class="opacity-90 leading-relaxed">${escapeHtml(message)}</p>
+          </div>
+          <button class="text-current opacity-60 hover:opacity-100 p-0.5" onclick="this.parentElement.parentElement.remove()" aria-label="Dismiss">✕</button>
+        </div>
+      `;
+      el.toastContainer.appendChild(toast);
+
+      if (duration > 0) {
+        setTimeout(() => {
+          toast.style.opacity = "0";
+          toast.style.transform = "translateY(-8px)";
+          setTimeout(() => toast.remove(), 300);
+        }, duration);
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ==================== Markdown & Syntax Highlighting ====================
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+      highlight: function (code, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+          try {
+            return hljs.highlight(code, { language: lang }).value;
+          } catch (_) {}
+        }
+        return hljs.highlightAuto(code).value;
+      },
+    });
+
+    function renderMarkdown(text) {
+      const rawHtml = marked.parse(text || "");
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = rawHtml;
+
+      // Inject language header and one-click Copy button into every <pre> block
+      tempDiv.querySelectorAll("pre").forEach((pre) => {
+        const codeEl = pre.querySelector("code");
+        const langClass = Array.from(codeEl?.classList || []).find((c) => c.startsWith("language-"));
+        const langName = langClass ? langClass.replace("language-", "") : "code";
+
+        const header = document.createElement("div");
+        header.className = "absolute top-0 left-0 right-0 flex items-center justify-between px-3.5 py-1.5 bg-slate-900/90 border-b border-slate-800 text-[11px] text-slate-400 rounded-t-[0.6rem]";
+        header.innerHTML = `
+          <span class="font-mono uppercase tracking-wider text-slate-400">${escapeHtml(langName)}</span>
+          <button type="button" class="copy-code-btn flex items-center gap-1 text-slate-300 hover:text-indigo-400 transition">
+            <span>Copy</span>
+          </button>
+        `;
+        pre.appendChild(header);
+      });
+
+      return tempDiv.innerHTML;
+    }
+
+    // Delegated listener for copying code blocks (iframe-safe via execCommand)
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest(".copy-code-btn");
+      if (!btn) return;
+      const pre = btn.closest("pre");
+      const codeText = pre?.querySelector("code")?.innerText || "";
+
+      const textarea = document.createElement("textarea");
+      textarea.value = codeText;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand("copy");
+        const span = btn.querySelector("span");
+        if (span) {
+          span.textContent = "Copied ✓";
+          span.classList.add("text-emerald-400");
+          setTimeout(() => {
+            span.textContent = "Copy";
+            span.classList.remove("text-emerald-400");
+          }, 2000);
+        }
+      } catch (err) {
+        showToast("Copy Failed", "Clipboard access was blocked. Please copy manually.", "warning");
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    });
+
+    // ==================== 1. WebGPU Hardware Diagnostics ====================
+    async function checkWebGPU() {
+      if (!("gpu" in navigator)) {
+        setGpuUnsupported("navigator.gpu is not exposed in this browser (outdated version or hardware acceleration disabled).");
+        return;
+      }
+
+      try {
+        const adapter = await navigator.gpu.requestAdapter({
+          powerPreference: "high-performance",
+        });
+
+        if (!adapter) {
+          setGpuUnsupported("Unable to acquire a WebGPU adapter. Please check your GPU drivers and chrome://gpu.");
+          return;
+        }
+
+        let info = {};
+        if (typeof adapter.requestAdapterInfo === "function") {
+          info = await adapter.requestAdapterInfo();
+        } else if (adapter.info) {
+          info = adapter.info;
+        }
+
+        const hasF16 = adapter.features.has("shader-f16");
+        const maxBufferBytes = adapter.limits?.maxBufferSize || 0;
+        const maxStorageBytes = adapter.limits?.maxStorageBufferBindingSize || 0;
+        const maxBufferGB = (maxBufferBytes / (1024 ** 3)).toFixed(2);
+        const maxStorageMB = (maxStorageBytes / (1024 ** 2)).toFixed(0);
+
+        const gpuName = info.description || info.device || info.vendor || "WebGPU Compatible GPU";
+        const arch = info.architecture ? ` (${info.architecture})` : "";
+
+        state.gpuSupported = true;
+        const statusLabel = hasF16 ? "WebGPU Ready (FP16)" : "WebGPU Ready (FP32)";
+
+        el.gpuStatusPill.className = "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30";
+        el.gpuStatusPill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>${statusLabel}`;
+
+        el.metricGpuBadge.textContent = statusLabel;
+        el.metricGpuBadge.className = "text-emerald-400 font-semibold";
+
+        el.gpuDetails.innerHTML = `
+          <div class="text-slate-200 font-medium truncate" title="${escapeHtml(gpuName + arch)}">${escapeHtml(gpuName)}${escapeHtml(arch)}</div>
+          <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400 pt-0.5 font-mono">
+            <span>MaxBuffer: <strong class="text-slate-200">${maxBufferGB} GB</strong></span>
+            <span>Storage: <strong class="text-slate-200">${maxStorageMB} MB</strong></span>
+            <span>FP16: <strong class="${hasF16 ? 'text-emerald-400' : 'text-amber-400'}">${hasF16 ? 'Yes' : 'No'}</strong></span>
+          </div>
+        `;
+
+        // Auto-select FP32 fallback if shader-f16 is unsupported
+        if (!hasF16) {
+          showToast(
+            "FP16 Shaders Not Supported",
+            "Automatically selected the q4f32_1 fallback quantization for compatibility.",
+            "warning",
+            7000
+          );
+          el.modelSelect.value = "Qwen2.5-7B-Instruct-q4f32_1-MLC";
+        }
+      } catch (err) {
+        setGpuUnsupported(`WebGPU initialization failed: ${err.message || err}`);
+      }
+    }
+
+    function setGpuUnsupported(reason) {
+      state.gpuSupported = false;
+      el.gpuStatusPill.className = "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-500/15 text-rose-300 border border-rose-500/30";
+      el.gpuStatusPill.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>WebGPU Unsupported`;
+      el.gpuDetails.innerHTML = `<span class="text-rose-300">${escapeHtml(reason)}</span>`;
+
+      el.metricGpuBadge.textContent = "WebGPU Unsupported";
+      el.metricGpuBadge.className = "text-rose-400 font-semibold";
+
+      el.unsupportedBanner.classList.remove("hidden");
+      el.webgpuErrorReason.textContent = reason;
+      el.loadModelBtn.disabled = true;
+      el.loadBtnText.textContent = "WebGPU Unsupported";
+    }
+
+    // ==================== 2. On-Demand Model Loading ====================
+    async function loadSelectedModel() {
+      if (!state.gpuSupported || state.isLoadingModel) return;
+
+      const selectedModel = el.modelSelect.value;
+      state.isLoadingModel = true;
+      state.isModelLoaded = false;
+
+      el.loadModelBtn.disabled = true;
+      el.modelSelect.disabled = true;
+      el.loadBtnText.textContent = "Loading Model Weights...";
+      el.progressWrapper.classList.remove("hidden");
+      el.progressBar.style.width = "2%";
+      el.progressPercent.textContent = "0%";
+      el.progressStage.textContent = "Initializing WebLLM engine...";
+      el.progressDetail.textContent = `Target model: ${selectedModel}`;
+
+      updateEngineStatus("loading", `Loading ${getShortModelName(selectedModel)}...`);
+
+      try {
+        if (state.engine) {
+          el.progressStage.textContent = "Releasing previous GPU buffers...";
+          await state.engine.unload();
+          state.engine = null;
+        }
+
+        const initProgressCallback = (report) => {
+          const pct = Math.min(100, Math.max(0, Math.round((report.progress || 0) * 100)));
+          el.progressBar.style.width = `${pct}%`;
+          el.progressPercent.textContent = `${pct}%`;
+          el.progressDetail.textContent = report.text || "";
+
+          const txt = (report.text || "").toLowerCase();
+          if (txt.includes("fetching") || txt.includes("download")) {
+            el.progressStage.textContent = "Downloading model weight shards...";
+          } else if (txt.includes("cache")) {
+            el.progressStage.textContent = "Reading weights from browser cache...";
+          } else if (txt.includes("gpu") || txt.includes("shader") || txt.includes("compil")) {
+            el.progressStage.textContent = "Compiling WebGPU shaders...";
+          } else if (pct === 100) {
+            el.progressStage.textContent = "Model ready!";
+          } else {
+            el.progressStage.textContent = "Loading inference runtime...";
+          }
+        };
+
+        state.engine = await webllm.CreateMLCEngine(selectedModel, {
+          initProgressCallback,
+        });
+
+        state.currentModelId = selectedModel;
+        state.isModelLoaded = true;
+
+        el.chatInput.disabled = false;
+        el.chatInput.placeholder = `Message ${getShortModelName(selectedModel)}... (Press Enter to send)`;
+        el.sendBtn.disabled = false;
+        el.loadBtnText.textContent = "Reload / Switch Model";
+
+        updateEngineStatus("ready", `Ready · ${getShortModelName(selectedModel)}`);
+        showToast(
+          "Model Loaded",
+          `${getShortModelName(selectedModel)} is loaded into local GPU memory and ready to chat!`,
+          "success"
+        );
+
+        if (window.innerWidth < 1024) {
+          closeSidebar();
+        }
+      } catch (err) {
+        console.error("Model load error:", err);
+        state.isModelLoaded = false;
+        updateEngineStatus("error", "Model load failed");
+        el.loadBtnText.textContent = "Retry Load Model";
+
+        const friendlyError = parseWebLLMError(err, selectedModel);
+        el.progressStage.textContent = "Initialization failed";
+        el.progressDetail.textContent = friendlyError;
+        showToast("Failed to Initialize Model", friendlyError, "error", 9500);
+      } finally {
+        state.isLoadingModel = false;
+        el.loadModelBtn.disabled = false;
+        el.modelSelect.disabled = false;
+      }
+    }
+
+    function getShortModelName(modelId) {
+      return modelId.replace("-Instruct", "").replace("-MLC", "");
+    }
+
+    function parseWebLLMError(err, modelId) {
+      const msg = String(err?.message || err || "");
+      const lower = msg.toLowerCase();
+
+      if (
+        lower.includes("oom") ||
+        lower.includes("out of memory") ||
+        lower.includes("allocation") ||
+        lower.includes("device lost") ||
+        lower.includes("buffer") ||
+        lower.includes("createbuffer")
+      ) {
+        return `Out of GPU Memory (WebGPU OOM) while loading ${getShortModelName(modelId)}. Try switching to Qwen2.5-3B or Qwen2.5-1.5B in the model dropdown, close other GPU-heavy tabs, or check chrome://gpu.`;
+      }
+
+      if (
+        lower.includes("fetch") ||
+        lower.includes("network") ||
+        lower.includes("failed to load") ||
+        lower.includes("err_")
+      ) {
+        return `Network error while downloading model shards from Hugging Face CDN. Check your connection and click "Retry Load Model" to resume.`;
+      }
+
+      if (lower.includes("f16") || lower.includes("shader")) {
+        return `WebGPU FP16 shader compilation failed. Switch to "Qwen2.5-7B-Instruct FP32 (Fallback)" in the model selector.`;
+      }
+
+      return `Initialization error: ${msg}`;
+    }
+
+    function updateEngineStatus(status, text) {
+      el.engineStatusText.textContent = text;
+      el.mobileStatusBadge.textContent = text;
+
+      if (status === "ready") {
+        el.engineDot.className = "w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]";
+      } else if (status === "loading") {
+        el.engineDot.className = "w-2 h-2 rounded-full bg-cyan-400 animate-ping";
+      } else if (status === "error") {
+        el.engineDot.className = "w-2 h-2 rounded-full bg-rose-500";
+      } else {
+        el.engineDot.className = "w-2 h-2 rounded-full bg-slate-500";
+      }
+    }
+
+    // ==================== 3. Streaming Chat & Telemetry ====================
+    async function sendMessage() {
+      const content = el.chatInput.value.trim();
+      if (!content || state.isGenerating) return;
+
+      if (!state.isModelLoaded || !state.engine) {
+        showToast("Model Not Loaded", 'Click "Load Model" in the left sidebar first.', "warning");
+        return;
+      }
+
+      if (el.welcomeScreen) {
+        el.welcomeScreen.classList.add("hidden");
+      }
+
+      el.chatInput.value = "";
+      el.chatInput.style.height = "auto";
+
+      state.messages.push({ role: "user", content });
+      appendMessageBubble("user", content);
+
+      const aiBubble = appendMessageBubble("assistant", "", true);
+      const contentContainer = aiBubble.querySelector(".markdown-body");
+
+      state.isGenerating = true;
+      el.sendBtn.classList.add("hidden");
+      el.stopBtn.classList.remove("hidden");
+      el.chatInput.disabled = true;
+
+      const temperature = parseFloat(el.tempSlider.value);
+      const topP = parseFloat(el.topPSlider.value);
+      const maxTokens = parseInt(el.maxTokensSlider.value, 10);
+      const sysPrompt = el.systemPrompt.value.trim();
+
+      const conversation = [];
+      if (sysPrompt) {
+        conversation.push({ role: "system", content: sysPrompt });
+      }
+      conversation.push(...state.messages);
+
+      let fullReply = "";
+      let tokenCount = 0;
+      const startTime = performance.now();
+      let firstTokenTime = null;
+
+      try {
+        const chunks = await state.engine.chat.completions.create({
+          messages: conversation,
+          temperature,
+          top_p: topP,
+          max_tokens: maxTokens,
+          stream: true,
+          stream_options: { include_usage: true },
+        });
+
+        for await (const chunk of chunks) {
+          const delta = chunk.choices?.[0]?.delta?.content || "";
+          if (delta) {
+            if (firstTokenTime === null) {
+              firstTokenTime = performance.now();
+              const ttftMs = Math.round(firstTokenTime - startTime);
+              el.metricTtft.textContent = `${ttftMs} ms`;
+            }
+
+            fullReply += delta;
+            tokenCount++;
+
+            contentContainer.innerHTML = renderMarkdown(fullReply);
+            scrollToBottom();
+
+            const elapsedSec = (performance.now() - (firstTokenTime || startTime)) / 1000;
+            if (elapsedSec > 0.05) {
+              const tps = (tokenCount / elapsedSec).toFixed(1);
+              el.metricTps.textContent = `${tps} tok/s`;
+              el.metricTokens.textContent = `${tokenCount}`;
+              el.mobilePerfSummary.textContent = `${tps} tok/s`;
+            }
+          }
+
+          if (chunk.usage) {
+            const completionTokens = chunk.usage.completion_tokens || tokenCount;
+            const totalGenSec = (performance.now() - (firstTokenTime || startTime)) / 1000;
+            if (totalGenSec > 0) {
+              const finalTps = (completionTokens / totalGenSec).toFixed(1);
+              el.metricTps.textContent = `${finalTps} tok/s`;
+              el.metricTokens.textContent = `${completionTokens}`;
+              el.mobilePerfSummary.textContent = `${finalTps} tok/s · ${completionTokens} tok`;
+            }
+          }
+        }
+
+        if (fullReply) {
+          state.messages.push({ role: "assistant", content: fullReply });
+        }
+      } catch (err) {
+        console.error("Generation error:", err);
+        const errMsg = String(err?.message || err);
+        if (errMsg.toLowerCase().includes("interrupt") || errMsg.toLowerCase().includes("abort")) {
+          if (fullReply) {
+            state.messages.push({ role: "assistant", content: fullReply + "\n\n*(Generation stopped)*" });
+            contentContainer.innerHTML = renderMarkdown(fullReply + "\n\n*(Generation stopped)*");
+          }
+        } else {
+          const friendly = parseWebLLMError(err, state.currentModelId);
+          contentContainer.innerHTML = `<div class="text-rose-400 text-xs">${escapeHtml(friendly)}</div>`;
+          showToast("Generation Interrupted", friendly, "error", 8500);
+        }
+      } finally {
+        contentContainer.classList.remove("typing-cursor");
+        state.isGenerating = false;
+        el.stopBtn.classList.add("hidden");
+        el.sendBtn.classList.remove("hidden");
+        el.chatInput.disabled = false;
+        el.chatInput.focus();
+        scrollToBottom();
+      }
+    }
+
+    function stopGeneration() {
+      if (state.engine && state.isGenerating) {
+        state.engine.interruptGenerate();
+      }
+    }
+
+    function appendMessageBubble(role, text, isStreaming = false) {
+      const wrapper = document.createElement("div");
+      wrapper.className = `max-w-4xl mx-auto flex gap-3 sm:gap-4 ${role === "user" ? "justify-end" : "justify-start"}`;
+
+      if (role === "user") {
+        wrapper.innerHTML = `
+          <div class="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-tr-sm bg-indigo-600 text-white px-4 py-3 text-sm leading-relaxed shadow-md shadow-indigo-950/40 whitespace-pre-wrap break-words">${escapeHtml(text)}</div>
+          <div class="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-xs font-bold text-slate-300">
+            You
+          </div>
+        `;
+      } else {
+        wrapper.innerHTML = `
+          <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-md shadow-indigo-500/20">
+            <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <div class="flex-1 min-w-0 max-w-[90%] sm:max-w-[85%] rounded-2xl rounded-tl-sm bg-slate-900/90 border border-slate-800/90 px-4 py-3.5 text-sm text-slate-200 shadow-sm">
+            <div class="markdown-body break-words ${isStreaming ? "typing-cursor" : ""}">${text ? renderMarkdown(text) : ""}</div>
+          </div>
+        `;
+      }
+
+      el.chatMessages.appendChild(wrapper);
+      scrollToBottom();
+      return wrapper;
+    }
+
+    function scrollToBottom() {
+      el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+    }
+
+    // ==================== 4. Controls & Event Listeners ====================
+    function openSidebar() {
+      el.sidebar.classList.remove("-translate-x-full");
+      el.sidebarBackdrop.classList.remove("hidden");
+    }
+
+    function closeSidebar() {
+      el.sidebar.classList.add("-translate-x-full");
+      el.sidebarBackdrop.classList.add("hidden");
+    }
+
+    el.mobileMenuBtn.addEventListener("click", openSidebar);
+    el.closeSidebarBtn.addEventListener("click", closeSidebar);
+    el.sidebarBackdrop.addEventListener("click", closeSidebar);
+
+    el.loadModelBtn.addEventListener("click", loadSelectedModel);
+    el.sendBtn.addEventListener("click", sendMessage);
+    el.stopBtn.addEventListener("click", stopGeneration);
+
+    el.chatInput.addEventListener("input", () => {
+      el.chatInput.style.height = "auto";
+      el.chatInput.style.height = Math.min(el.chatInput.scrollHeight, 160) + "px";
+    });
+
+    el.chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    el.tempSlider.addEventListener("input", () => {
+      el.tempValue.textContent = parseFloat(el.tempSlider.value).toFixed(2);
+    });
+
+    el.topPSlider.addEventListener("input", () => {
+      el.topPValue.textContent = parseFloat(el.topPSlider.value).toFixed(2);
+    });
+
+    el.maxTokensSlider.addEventListener("input", () => {
+      el.maxTokensValue.textContent = el.maxTokensSlider.value;
+    });
+
+    el.resetParamsBtn.addEventListener("click", () => {
+      el.tempSlider.value = "0.7";
+      el.tempValue.textContent = "0.70";
+      el.topPSlider.value = "0.9";
+      el.topPValue.textContent = "0.90";
+      el.maxTokensSlider.value = "2048";
+      el.maxTokensValue.textContent = "2048";
+      el.systemPrompt.value = "You are Qwen, a helpful, accurate, and concise AI assistant running 100% locally in the user's browser via WebGPU.";
+      showToast("Parameters Reset", "Temperature, Top-P, and System Prompt restored to defaults.", "info", 2500);
+    });
+
+    // Clear Chat History
+    el.clearChatBtn.addEventListener("click", async () => {
+      if (state.isGenerating) {
+        stopGeneration();
+      }
+      state.messages = [];
+      if (state.engine) {
+        await state.engine.resetChat();
+      }
+      Array.from(el.chatMessages.children).forEach((child) => {
+        if (child.id !== "welcome-screen") {
+          child.remove();
+        }
+      });
+      if (el.welcomeScreen) {
+        el.welcomeScreen.classList.remove("hidden");
+      }
+      el.metricTtft.textContent = "--";
+      el.metricTps.textContent = "-- tok/s";
+      el.metricTokens.textContent = "0";
+      el.mobilePerfSummary.textContent = "";
+      showToast("Chat Cleared", "Conversation context has been reset.", "info", 2500);
+    });
+
+    // Clear Browser Cache & IndexedDB Storage with Custom Modal Confirmation
+    el.clearCacheBtn.addEventListener("click", () => {
+      el.cacheConfirmModal.classList.remove("hidden");
+    });
+
+    el.cancelClearCacheBtn.addEventListener("click", () => {
+      el.cacheConfirmModal.classList.add("hidden");
+    });
+
+    el.confirmClearCacheBtn.addEventListener("click", async () => {
+      el.cacheConfirmModal.classList.add("hidden");
+      try {
+        let deletedCount = 0;
+
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          const webllmKeys = keys.filter((k) => k.includes("webllm") || k.includes("mlc"));
+          for (const key of webllmKeys) {
+            await caches.delete(key);
+            deletedCount++;
+          }
+        }
+
+        if (window.indexedDB && typeof indexedDB.databases === "function") {
+          const dbs = await indexedDB.databases();
+          for (const db of dbs) {
+            if (db.name && (db.name.includes("webllm") || db.name.includes("mlc"))) {
+              indexedDB.deleteDatabase(db.name);
+              deletedCount++;
+            }
+          }
+        }
+
+        if (deletedCount === 0) {
+          showToast("No Cached Models Found", "No locally cached WebLLM weights were found in browser storage.", "info");
+        } else {
+          showToast(
+            "Model Cache Cleared",
+            `Removed ${deletedCount} local storage bucket(s) and freed disk space.`,
+            "success",
+            6000
+          );
+        }
+      } catch (err) {
+        showToast("Failed to Clear Cache", err.message || String(err), "error");
+      }
+    });
+
+    // Sample Prompt Chips
+    document.querySelectorAll(".prompt-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const text = chip.textContent.trim();
+        if (!state.isModelLoaded) {
+          showToast("Model Not Loaded", 'Click "Load Model" in the sidebar first to run sample prompts.', "warning");
+          if (window.innerWidth < 1024) openSidebar();
+          return;
+        }
+        el.chatInput.value = text;
+        sendMessage();
+      });
+    });
+
+    // Initialize WebGPU Check on Load
+    checkWebGPU();
+  </script>
+</body>
+</html>
