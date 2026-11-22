@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phi-4 WebGPU - Directly browser. Private. Simple.</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    .prose pre {
+      background-color: #0f172a !important;
+      border: 1px solid #1e293b;
+      border-radius: 0.5rem;
+      padding: 0.875rem;
+      margin: 0.75rem 0;
+      overflow-x: auto;
+      position: relative;
+    }
+    .prose code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.875em; }
+    .prose p { margin-bottom: 0.65rem; line-height: 1.65; }
+    .prose p:last-child { margin-bottom: 0; }
+    .prose ul, .prose ol { margin-left: 1.25rem; margin-bottom: 0.65rem; list-style-type: disc; }
+    .prose ol { list-style-type: decimal; }
+    .copy-btn {
+      position: absolute; top: 0.4rem; right: 0.4rem;
+      background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+      border-radius: 0.375rem; padding: 0.2rem 0.5rem; font-size: 0.75rem;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .copy-btn:hover { background: #334155; color: #f8fafc; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-violet-500/30">
+
+  <!-- Top Status Bar -->
+  <header class="border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-md sticky top-0 z-20">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-violet-500/20">
+          Φ4
+        </div>
+        <div>
+          <h1 class="text-base font-semibold tracking-tight text-slate-100 flex items-center gap-2">
+            Phi-4 WebGPU
+            <span class="text-[11px] font-medium px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">Microsoft Phi</span>
+          </h1>
+          <p class="text-xs text-slate-400">100% In-Browser Inference · Zero Backend · Private</p>
+        </div>
+      </div>
+
+      <!-- Hardware & Telemetry -->
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <div id="gpu-badge" class="px-2.5 py-1 rounded-md bg-slate-800/90 border border-slate-700/80 text-slate-300 flex items-center gap-1.5">
+          <span id="gpu-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          <span id="gpu-text">Checking WebGPU...</span>
+        </div>
+        <div class="px-2.5 py-1 rounded-md bg-slate-800/90 border border-slate-700/80 text-slate-300">
+          TTFT: <span id="stat-ttft" class="font-mono text-violet-400">--</span>
+        </div>
+        <div class="px-2.5 py-1 rounded-md bg-slate-800/90 border border-slate-700/80 text-slate-300">
+          Speed: <span id="stat-tps" class="font-mono text-violet-400">--</span> tok/s
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Control Panel -->
+  <section class="border-b border-slate-800/60 bg-slate-900/40">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex flex-col gap-3">
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1">
+          <label for="model-select" class="text-xs font-medium text-slate-400 whitespace-nowrap">Model Variant:</label>
+          <select id="model-select" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-violet-500 transition">
+            <option value="Phi-4-mini" selected>Phi-4-mini-instruct (3.8B · Recommended · Fast Reasoning)</option>
+            <option value="Phi-4">Phi-4 (14B · High VRAM Discrete GPU Required)</option>
+          </select>
+
+          <button id="load-btn" class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition shadow-sm shadow-violet-600/20 whitespace-nowrap">
+            Load / Initialize Model
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2 justify-end">
+          <button id="toggle-sys-btn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-violet-300 text-xs transition border border-slate-700/70">
+            System Prompt
+          </button>
+          <button id="clear-chat-btn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition border border-slate-700/70">
+            Clear Chat
+          </button>
+          <button id="clear-cache-btn" title="Delete cached model weights from browser Cache API" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-800/60 text-slate-400 text-xs transition border border-slate-700/70">
+            Clear Cache
+          </button>
+        </div>
+      </div>
+
+      <!-- Collapsible System Prompt Panel -->
+      <div id="sys-prompt-panel" class="hidden bg-slate-900/90 border border-slate-800 rounded-lg p-3">
+        <div class="flex items-center justify-between mb-1.5">
+          <label for="system-prompt" class="text-xs font-medium text-slate-300">System Prompt (Persona / Instructions):</label>
+          <div class="flex items-center gap-2">
+            <select id="sys-preset" class="bg-slate-950 border border-slate-700 text-slate-300 text-[11px] rounded px-2 py-1 focus:outline-none">
+              <option value="default">Default Assistant</option>
+              <option value="reasoning">Step-by-Step Math & Logic</option>
+              <option value="coder">Senior Software Engineer</option>
+              <option value="concise">Ultra-Concise Mode</option>
+            </select>
+          </div>
+        </div>
+        <textarea
+          id="system-prompt"
+          rows="2"
+          class="w-full bg-slate-950 border border-slate-700/90 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none resize-y"
+        >You are Phi-4, a helpful, logical, and concise AI assistant running locally in the user's browser via WebGPU. Respond clearly and match the user's language.</textarea>
+      </div>
+
+      <!-- Progress Bar -->
+      <div id="progress-container" class="hidden">
+        <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3">
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <span id="progress-text" class="text-slate-300 truncate pr-2">Preparing model weights...</span>
+            <span id="progress-pct" class="font-mono text-violet-400 font-semibold">0%</span>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div id="progress-bar" class="bg-violet-500 h-1.5 rounded-full transition-all duration-200" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Chat Area -->
+  <main id="chat-container" class="flex-1 max-w-5xl w-full mx-auto px-4 py-6 overflow-y-auto space-y-5">
+    <div id="welcome-card" class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 text-center max-w-xl mx-auto my-8">
+      <div class="w-12 h-12 rounded-2xl bg-violet-500/10 border border-violet-500/20 text-violet-400 flex items-center justify-center mx-auto mb-3 text-xl font-bold">
+        Φ
+      </div>
+      <h2 class="text-lg font-semibold text-slate-100 mb-1.5">Microsoft Phi-4 On-Device LLM</h2>
+      <p class="text-xs text-slate-400 leading-relaxed mb-4">
+        Run Microsoft's reasoning-focused <strong>Phi-4-mini (3.8B)</strong> and <strong>Phi-4 (14B)</strong> directly inside your browser via WebGPU. Customize the <strong>System Prompt</strong> above anytime, and run 100% offline once cached.
+      </p>
+      <div class="text-[11px] text-slate-500 bg-slate-950/70 rounded-lg p-2.5 border border-slate-800/80">
+        💡 Tip: <strong>Phi-4-mini (3.8B)</strong> runs smoothly on most laptops (~2.3GB VRAM), while <strong>Phi-4 (14B)</strong> requires 10GB+ VRAM.
+      </div>
+    </div>
+  </main>
+
+  <!-- Input Footer -->
+  <footer class="border-t border-slate-800/80 bg-slate-900/80 backdrop-blur-md sticky bottom-0">
+    <div class="max-w-5xl mx-auto px-4 py-3">
+      <form id="chat-form" class="flex items-end gap-2.5">
+        <textarea
+          id="user-input"
+          rows="1"
+          disabled
+          placeholder="Click 'Load / Initialize Model' above to start..."
+          class="flex-1 bg-slate-950 border border-slate-700/90 focus:border-violet-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none resize-none max-h-36 disabled:opacity-50"
+        ></textarea>
+        <button
+          type="submit"
+          id="send-btn"
+          disabled
+          class="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition whitespace-nowrap"
+        >
+          Send
+        </button>
+        <button
+          type="button"
+          id="stop-btn"
+          class="hidden px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-medium transition whitespace-nowrap"
+        >
+          Stop
+        </button>
+      </form>
+      <div class="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+        <span>Powered by WebLLM & WebGPU · MIT License</span>
+        <span>Private. Simple. In browser.</span>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module">
+    import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+
+    const gpuDot = document.getElementById("gpu-dot");
+    const gpuText = document.getElementById("gpu-text");
+    const modelSelect = document.getElementById("model-select");
+    const loadBtn = document.getElementById("load-btn");
+    const toggleSysBtn = document.getElementById("toggle-sys-btn");
+    const sysPromptPanel = document.getElementById("sys-prompt-panel");
+    const systemPromptInput = document.getElementById("system-prompt");
+    const sysPreset = document.getElementById("sys-preset");
+    const progressContainer = document.getElementById("progress-container");
+    const progressText = document.getElementById("progress-text");
+    const progressPct = document.getElementById("progress-pct");
+    const progressBar = document.getElementById("progress-bar");
+    const chatContainer = document.getElementById("chat-container");
+    const welcomeCard = document.getElementById("welcome-card");
+    const chatForm = document.getElementById("chat-form");
+    const userInput = document.getElementById("user-input");
+    const sendBtn = document.getElementById("send-btn");
+    const stopBtn = document.getElementById("stop-btn");
+    const clearChatBtn = document.getElementById("clear-chat-btn");
+    const clearCacheBtn = document.getElementById("clear-cache-btn");
+    const statTtft = document.getElementById("stat-ttft");
+    const statTps = document.getElementById("stat-tps");
+
+    let engine = null;
+    let isGenerating = false;
+    let hasF16 = false;
+    let conversationHistory = [];
+
+    const PRESETS = {
+      default: "You are Phi-4, a helpful, logical, and concise AI assistant running locally in the user's browser via WebGPU. Respond clearly and match the user's language.",
+      reasoning: "You are Phi-4, an expert in mathematics, logic, and structured reasoning. Break problems down step by step and verify your final answer.",
+      coder: "You are a senior software engineer. Provide clean, well-structured, production-ready code with brief explanations.",
+      concise: "Answer directly in 1 to 3 short sentences. No fluff, no preamble."
+    };
+
+    toggleSysBtn.addEventListener("click", () => {
+      sysPromptPanel.classList.toggle("hidden");
+    });
+
+    sysPreset.addEventListener("change", () => {
+      const val = sysPreset.value;
+      if (PRESETS[val]) {
+        systemPromptInput.value = PRESETS[val];
+      }
+    });
+
+    marked.setOptions({
+      highlight: function (code, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+          return hljs.highlight(code, { language: lang }).value;
+        }
+        return hljs.highlightAuto(code).value;
+      },
+      breaks: true
+    });
+
+    // 1. Hardware Probe
+    async function checkWebGPU() {
+      if (!navigator.gpu) {
+        gpuDot.className = "w-2 h-2 rounded-full bg-rose-500";
+        gpuText.textContent = "WebGPU Unsupported";
+        loadBtn.disabled = true;
+        appendSystemAlert("WebGPU is not available in this browser. Please use Chrome 113+, Edge, or enable WebGPU in Safari Feature Flags.");
+        return;
+      }
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) {
+          gpuDot.className = "w-2 h-2 rounded-full bg-rose-500";
+          gpuText.textContent = "No GPU Adapter Found";
+          loadBtn.disabled = true;
+          return;
+        }
+        hasF16 = adapter.features.has("shader-f16");
+        const info = adapter.info || {};
+        const gpuName = info.description || info.architecture || (hasF16 ? "WebGPU (FP16 Ready)" : "WebGPU (FP32 Mode)");
+        gpuDot.className = "w-2 h-2 rounded-full bg-violet-400";
+        gpuText.textContent = gpuName.length > 24 ? gpuName.slice(0, 24) + "..." : gpuName;
+      } catch (err) {
+        gpuDot.className = "w-2 h-2 rounded-full bg-amber-400";
+        gpuText.textContent = "WebGPU Check Error";
+      }
+    }
+
+    // 2. Match Available Phi-4 Model ID from WebLLM Prebuilt Config
+    function resolvePhiModelId(variant) {
+      const available = (webllm.prebuiltAppConfig?.model_list || []).map(m => m.model_id);
+      const phiIds = available.filter(id => id.toLowerCase().includes("phi-4"));
+      const preferredSuffix = hasF16 ? "f16" : "f32";
+
+      if (variant === "Phi-4-mini") {
+        const miniMatches = phiIds.filter(id => id.toLowerCase().includes("mini"));
+        if (miniMatches.length > 0) {
+          return miniMatches.find(id => id.toLowerCase().includes(preferredSuffix)) || miniMatches[0];
+        }
+        return `Phi-4-mini-instruct-${hasF16 ? "q4f16_1" : "q4f32_1"}-MLC`;
+      } else {
+        const fullMatches = phiIds.filter(id => !id.toLowerCase().includes("mini"));
+        if (fullMatches.length > 0) {
+          return fullMatches.find(id => id.toLowerCase().includes(preferredSuffix)) || fullMatches[0];
+        }
+        return `phi-4-${hasF16 ? "q4f16_1" : "q4f32_1"}-MLC`;
+      }
+    }
+
+    // 3. Load Model
+    loadBtn.addEventListener("click", async () => {
+      const variant = modelSelect.value;
+      const targetModelId = resolvePhiModelId(variant);
+
+      loadBtn.disabled = true;
+      modelSelect.disabled = true;
+      progressContainer.classList.remove("hidden");
+      progressBar.style.width = "0%";
+      progressPct.textContent = "0%";
+      progressText.textContent = `Initializing ${targetModelId}...`;
+
+      try {
+        if (engine) {
+          await engine.unload();
+        }
+        engine = await webllm.CreateMLCEngine(targetModelId, {
+          initProgressCallback: (report) => {
+            const pct = Math.round((report.progress || 0) * 100);
+            progressBar.style.width = `${pct}%`;
+            progressPct.textContent = `${pct}%`;
+            progressText.textContent = report.text || "Loading...";
+          }
+        });
+
+        progressText.textContent = `✅ ${targetModelId} ready!`;
+        userInput.disabled = false;
+        sendBtn.disabled = false;
+        userInput.placeholder = "Type a message (Enter to send, Shift+Enter for new line)...";
+        userInput.focus();
+      } catch (err) {
+        console.error(err);
+        progressText.textContent = `❌ Failed: ${err.message}`;
+        appendSystemAlert(`Failed to load ${targetModelId} (${err.message}). If you selected Phi-4 (14B) and ran out of GPU memory, try switching to Phi-4-mini (3.8B).`);
+      } finally {
+        loadBtn.disabled = false;
+        modelSelect.disabled = false;
+      }
+    });
+
+    // 4. Render Chat Bubbles
+    function appendMessage(role, content = "") {
+      if (welcomeCard) welcomeCard.remove();
+
+      const wrapper = document.createElement("div");
+      wrapper.className = `flex ${role === "user" ? "justify-end" : "justify-start"}`;
+
+      const bubble = document.createElement("div");
+      bubble.className = role === "user"
+        ? "max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-sm px-4 py-3 bg-violet-600 text-white text-sm leading-relaxed shadow-sm"
+        : "max-w-[92%] sm:max-w-[82%] rounded-2xl rounded-bl-sm px-4 py-3 bg-slate-900 border border-slate-800 text-slate-100 text-sm prose prose-invert shadow-sm";
+
+      if (role === "user") {
+        bubble.textContent = content;
+      } else {
+        bubble.innerHTML = content ? marked.parse(content) : '<span class="inline-block w-2 h-4 bg-violet-400 animate-pulse"></span>';
+      }
+
+      wrapper.appendChild(bubble);
+      chatContainer.appendChild(wrapper);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+      return bubble;
+    }
+
+    function appendSystemAlert(text) {
+      const div = document.createElement("div");
+      div.className = "bg-rose-950/50 border border-rose-800/70 text-rose-200 text-xs rounded-xl px-4 py-3";
+      div.textContent = text;
+      chatContainer.appendChild(div);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function enhanceCodeBlocks(container) {
+      container.querySelectorAll("pre").forEach((pre) => {
+        if (pre.querySelector(".copy-btn")) return;
+        const btn = document.createElement("button");
+        btn.className = "copy-btn";
+        btn.textContent = "Copy";
+        btn.onclick = () => {
+          const code = pre.querySelector("code")?.innerText || pre.innerText;
+          navigator.clipboard.writeText(code);
+          btn.textContent = "Copied";
+          setTimeout(() => (btn.textContent = "Copy"), 1500);
+        };
+        pre.appendChild(btn);
+      });
+    }
+
+    // 5. Stream Response with Dynamic System Prompt & Anti-Repetition
+    async function handleSend() {
+      const text = userInput.value.trim();
+      if (!text || !engine || isGenerating) return;
+
+      userInput.value = "";
+      userInput.style.height = "auto";
+      appendMessage("user", text);
+      conversationHistory.push({ role: "user", content: text });
+
+      isGenerating = true;
+      sendBtn.classList.add("hidden");
+      stopBtn.classList.remove("hidden");
+      userInput.disabled = true;
+
+      const aiBubble = appendMessage("assistant", "");
+      let fullReply = "";
+      const startTime = performance.now();
+      let firstTokenTime = null;
+      let tokenCount = 0;
+
+      const sysText = systemPromptInput.value.trim();
+      const recentHistory = conversationHistory.slice(-10);
+      const payloadMessages = sysText
+        ? [{ role: "system", content: sysText }, ...recentHistory]
+        : recentHistory;
+
+      try {
+        const chunks = await engine.chat.completions.create({
+          messages: payloadMessages,
+          stream: true,
+          temperature: 0.65,
+          presence_penalty: 0.5,
+          frequency_penalty: 0.4,
+          max_tokens: 1024
+        });
+
+        for await (const chunk of chunks) {
+          const delta = chunk.choices[0]?.delta?.content || "";
+          if (delta) {
+            if (!firstTokenTime) {
+              firstTokenTime = performance.now();
+              statTtft.textContent = `${Math.round(firstTokenTime - startTime)}ms`;
+            }
+            tokenCount++;
+            fullReply += delta;
+            aiBubble.innerHTML = marked.parse(fullReply);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            const elapsedSec = (performance.now() - firstTokenTime) / 1000;
+            if (elapsedSec > 0.1) {
+              statTps.textContent = (tokenCount / elapsedSec).toFixed(1);
+            }
+          }
+        }
+        enhanceCodeBlocks(aiBubble);
+        conversationHistory.push({ role: "assistant", content: fullReply });
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          aiBubble.innerHTML = `<span class="text-rose-400">Generation stopped or failed: ${err.message}</span>`;
+        }
+      } finally {
+        isGenerating = false;
+        stopBtn.classList.add("hidden");
+        sendBtn.classList.remove("hidden");
+        userInput.disabled = false;
+        userInput.focus();
+      }
+    }
+
+    chatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      handleSend();
+    });
+
+    userInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    });
+
+    userInput.addEventListener("input", () => {
+      userInput.style.height = "auto";
+      userInput.style.height = Math.min(userInput.scrollHeight, 144) + "px";
+    });
+
+    stopBtn.addEventListener("click", () => {
+      if (engine && isGenerating) {
+        engine.interruptGenerate();
+      }
+    });
+
+    clearChatBtn.addEventListener("click", () => {
+      conversationHistory = [];
+      chatContainer.innerHTML = "";
+      statTtft.textContent = "--";
+      statTps.textContent = "--";
+    });
+
+    clearCacheBtn.addEventListener("click", async () => {
+      if (!confirm("Delete all cached WebLLM model weights from this browser? You will need to re-download them next time.")) return;
+      try {
+        const keys = await caches.keys();
+        for (const key of keys) {
+          if (key.includes("webllm") || key.includes("mlc")) {
+            await caches.delete(key);
+          }
+        }
+        alert("Local model cache cleared!");
+      } catch (e) {
+        alert("Failed to clear cache: " + e.message);
+      }
+    });
+
+    checkWebGPU();
+  </script>
+</body>
+</html>
